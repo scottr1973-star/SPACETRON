@@ -1,0 +1,807 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
+<title>Space Tron — First-Person Neon + Radar (Greedy Chase AI • Solid Trails)</title>
+<style>
+  :root{
+    --fg:#e6f1ff; --bg0:#060910; --bg1:#0b1530; --hud:#00e0ff;
+    --p1:#00f0ff; --p2:#ff3ad2;
+    --win:#7dff9a; --lose:#ff5a7a; --banner:#101622cc;
+  }
+  html,body{height:100%;margin:0;background:
+    radial-gradient(1200px 800px at 75% 15%,rgba(0,246,255,.08),transparent 60%),
+    radial-gradient(1000px 700px at 20% 85%,rgba(255,109,240,.08),transparent 60%),
+    linear-gradient(180deg,var(--bg1),var(--bg0));
+    color:var(--fg);font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+    overscroll-behavior:none;touch-action:none}
+  #host{position:fixed;inset:0;overflow:hidden}
+  canvas.webgl{display:block;width:100%;height:100%;touch-action:none}
+
+  #hudTop{position:absolute;left:12px;top:12px;display:flex;gap:10px;z-index:60;pointer-events:none}
+  .pill{background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.12);
+        border-radius:999px;padding:6px 10px;font-weight:800;backdrop-filter:blur(3px)}
+  #topRight{position:absolute;right:10px;top:10px;display:flex;gap:8px;z-index:60}
+  .btn{appearance:none;border:0;border-radius:12px;padding:8px 12px;background:rgba(255,255,255,.12);
+       color:var(--fg);font-weight:800;cursor:pointer;backdrop-filter:blur(3px)}
+  .btn:active{transform:scale(.98)}
+  #hint{position:absolute;left:50%;bottom:10px;transform:translateX(-50%);opacity:.75;font-size:12px;z-index:60;pointer-events:none}
+
+  #cockpit{position:absolute;inset:0;pointer-events:none;z-index:50}
+  #cockpit svg{width:100%;height:100%}
+  .ck{fill:none;stroke:var(--hud);stroke-width:2.5;opacity:.85;filter:drop-shadow(0 0 6px rgba(0,224,255,.6))}
+  .reticle{stroke-width:1.6;opacity:.9}
+
+  .overlay{position:absolute;inset:0;display:grid;place-items:center;background:rgba(0,0,0,.55);
+           backdrop-filter:blur(6px);z-index:9999;pointer-events:auto}
+  .card{background:linear-gradient(180deg,rgba(255,255,255,.07),rgba(255,255,255,.04));border:1px solid rgba(255,255,255,.12);
+        border-radius:16px;padding:20px 24px;text-align:center;max-width:560px}
+  .row{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+
+  #mobileControls{position:absolute;inset:0;pointer-events:none;z-index:70}
+  #turnBtns{position:absolute;left:10px;bottom:10px;display:flex;gap:10px;pointer-events:auto}
+  .round{width:72px;height:72px;border-radius:999px;border:0;background:rgba(255,255,255,.12);color:var(--fg);
+         font-weight:900;letter-spacing:.6px;box-shadow:0 6px 14px rgba(0,0,0,.35)}
+  #btnLeft::before{content:"⟲";font-size:30px}
+  #btnRight::before{content:"⟳";font-size:30px}
+  #btnBoost{position:absolute;right:10px;bottom:10px;width:88px;height:88px;border-radius:999px;border:0;
+            background:linear-gradient(180deg,#ffd35a,#ff9e3d);color:#081017;font-weight:900;letter-spacing:.6px;pointer-events:auto}
+
+  #banner{
+    position:absolute;left:50%;top:14%;transform:translateX(-50%);
+    background:var(--banner);border:1px solid rgba(255,255,255,.15);
+    border-radius:12px;padding:10px 14px;font-weight:900;letter-spacing:.6px;
+    z-index:80;display:none;text-align:center;min-width:220px
+  }
+  #banner.win{color:var(--win)} #banner.lose{color:var(--lose)} #banner.info{color:#bde0ff}
+
+  #radarWrap{position:absolute;right:10px;bottom:110px;z-index:80;display:flex;flex-direction:column;gap:6px}
+  #radarCanvas{width:160px;height:160px;border-radius:10px;background:rgba(0,0,0,.5);
+               border:1px solid rgba(255,255,255,.2);backdrop-filter:blur(3px)}
+  #radarToolbar{display:flex;gap:6px;justify-content:flex-end}
+  #btnRadar{font-size:12px;padding:6px 10px}
+
+  #err{position:fixed;left:8px;bottom:8px;max-width:92%;background:#200;padding:8px 10px;color:#fbb;border:1px solid #a33;border-radius:8px;
+       font:12px/1.3 monospace;display:none;z-index:10000;white-space:pre-wrap}
+</style>
+</head>
+<body>
+<div id="host">
+  <canvas id="game" class="webgl"></canvas>
+
+  <div id="hudTop">
+    <div class="pill">Round: <span id="round">1</span></div>
+    <div class="pill">You: <span id="youWins">0</span> • AI: <span id="aiWins">0</span></div>
+    <div class="pill">Speed: <span id="spd">1.0x</span></div>
+  </div>
+
+  <div id="topRight">
+    <button id="btnPause" class="btn">Pause</button>
+    <button id="btnFull" class="btn">Fullscreen</button>
+  </div>
+
+  <div id="radarWrap">
+    <canvas id="radarCanvas" width="160" height="160"></canvas>
+    <div id="radarToolbar">
+      <button id="btnRadar" class="btn">Radar: M</button>
+    </div>
+  </div>
+
+  <div id="hint">TURN: ←/→ or A/D • Boost: Shift / BOOST • Tap anywhere to start</div>
+
+  <div id="cockpit" aria-hidden="true">
+    <svg viewBox="0 0 100 100" preserveAspectRatio="none">
+      <path class="ck" d="M2,12 C18,2 82,2 98,12" />
+      <path class="ck" d="M4,14 L4,36" />
+      <path class="ck" d="M96,14 L96,36" />
+      <path class="ck" d="M4,36 C4,46 10,52 20,56" />
+      <path class="ck" d="M96,36 C96,46 90,52 80,56" />
+      <circle class="ck reticle" cx="50" cy="56" r="5"/>
+      <path class="ck reticle" d="M45,56 h-6 M61,56 h6 M50,51 v-6 M50,61 v6"/>
+    </svg>
+  </div>
+
+  <div id="startOverlay" class="overlay" aria-modal="true" role="dialog">
+    <div class="card">
+      <h1>Space Tron — First-Person Neon</h1>
+      <p>Inside the cockpit. Lay neon walls. Don’t hit any wall or the arena edge. First to 3 rounds wins.</p>
+      <div class="row" style="margin-top:10px">
+        <button id="btnStart" class="btn" autofocus>Start</button>
+        <button id="btnHow" class="btn">How to Play</button>
+      </div>
+      <p style="opacity:.8;font-size:12px;margin-top:8px">Desktop: ←/→ or A/D • Shift=Boost. Mobile: ⟲/⟳ and BOOST.</p>
+    </div>
+  </div>
+
+  <div id="pauseOverlay" class="overlay" style="display:none">
+    <div class="card">
+      <h2>Paused</h2>
+      <div class="row">
+        <button id="btnResume" class="btn">Resume</button>
+        <button id="btnRestart" class="btn">Restart Match</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="mobileControls">
+    <div id="turnBtns">
+      <button id="btnLeft" class="round" aria-label="Turn Left"></button>
+      <button id="btnRight" class="round" aria-label="Turn Right"></button>
+    </div>
+    <button id="btnBoost">BOOST</button>
+  </div>
+
+  <div id="banner" class="info">Ready</div>
+</div>
+
+<div id="err"></div>
+
+<script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
+<script>
+/* ===== Crash surface ===== */
+window.addEventListener('error', e=>{
+  const box=document.getElementById('err'); box.style.display='block';
+  box.textContent=(e.error&&e.error.stack)?e.error.stack:(e.message||'Script error');
+});
+
+/* ===== DOM ===== */
+const canvas=document.getElementById('game');
+const roundEl=document.getElementById('round');
+const youWinsEl=document.getElementById('youWins');
+const aiWinsEl=document.getElementById('aiWins');
+const spdEl=document.getElementById('spd');
+const btnStart=document.getElementById('btnStart');
+const btnHow=document.getElementById('btnHow');
+const startOverlay=document.getElementById('startOverlay');
+const pauseOverlay=document.getElementById('pauseOverlay');
+const btnPause=document.getElementById('btnPause');
+const btnFull=document.getElementById('btnFull');
+const btnResume=document.getElementById('btnResume');
+const btnRestart=document.getElementById('btnRestart');
+const btnLeft=document.getElementById('btnLeft');
+const btnRight=document.getElementById('btnRight');
+const btnBoost=document.getElementById('btnBoost');
+const banner=document.getElementById('banner');
+const radarCanvas=document.getElementById('radarCanvas');
+const radarCtx=radarCanvas.getContext('2d');
+const btnRadar=document.getElementById('btnRadar');
+
+/* ===== Three.js setup ===== */
+const renderer=new THREE.WebGLRenderer({canvas,antialias:true,powerPreference:'high-performance'});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.outputColorSpace=THREE.SRGBColorSpace;
+renderer.toneMapping=THREE.ACESFilmicToneMapping; renderer.toneMappingExposure=1.06;
+
+const scene=new THREE.Scene();
+scene.fog=new THREE.Fog(0x03060c,120,1400);
+const world=new THREE.Group(); scene.add(world);
+const camera=new THREE.PerspectiveCamera(80,innerWidth/innerHeight,0.05,4000);
+
+/* Lights */
+scene.add(new THREE.HemisphereLight(0x88ccff,0x001015,0.95));
+const dl=new THREE.DirectionalLight(0xffffff,0.7); dl.position.set(4,18,10); scene.add(dl);
+
+/* Arena */
+const ARENA = { half: 60, y: 0 };
+const grid=new THREE.GridHelper(ARENA.half*2, 60*2, 0x00ffff, 0x00ffff);
+grid.material.transparent=true; grid.material.opacity=0.24;
+grid.position.y = ARENA.y; world.add(grid);
+const borderMat = new THREE.LineBasicMaterial({ color:0x00ffff, transparent:true, opacity:0.8 });
+const borderGeo = new THREE.BufferGeometry().setFromPoints([
+  new THREE.Vector3(-ARENA.half, ARENA.y+0.01, -ARENA.half),
+  new THREE.Vector3( ARENA.half, ARENA.y+0.01, -ARENA.half),
+  new THREE.Vector3( ARENA.half, ARENA.y+0.01,  ARENA.half),
+  new THREE.Vector3(-ARENA.half, ARENA.y+0.01,  ARENA.half),
+  new THREE.Vector3(-ARENA.half, ARENA.y+0.01, -ARENA.half),
+]);
+const border=new THREE.Line(borderGeo, borderMat); world.add(border);
+
+/* ===== Ship builder (AI mesh visible, player hidden) ===== */
+function buildShip(colorHex){
+  const g=new THREE.Group();
+  const bodyMat=new THREE.MeshStandardMaterial({color:colorHex, metalness:0.12, roughness:0.45});
+  const body=new THREE.Mesh(new THREE.ConeGeometry(0.7,1.8,18), bodyMat);
+  body.rotation.x=Math.PI/2; body.position.set(0,0.65,0);
+  const tail=new THREE.Mesh(new THREE.CylinderGeometry(0.25,0.4,1.1,14), bodyMat);
+  tail.rotation.x=Math.PI/2; tail.position.set(0,0.4,-0.8);
+  const canopy=new THREE.Mesh(new THREE.SphereGeometry(0.28,16,12), new THREE.MeshStandardMaterial({color:0x101010, roughness:0.9}));
+  canopy.position.set(0,0.85,0.2);
+  const outline=new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.CapsuleGeometry(0.45,1.3,10,12)),
+                      new THREE.LineBasicMaterial({color:0x000000, opacity:0.95, transparent:true}));
+  outline.position.y=0.6;
+  const glow=new THREE.Mesh(new THREE.TorusGeometry(0.25,0.09,12,28),
+            new THREE.MeshBasicMaterial({color:colorHex, transparent:true, opacity:1, blending:THREE.AdditiveBlending}));
+  glow.rotation.x=Math.PI/2; glow.position.set(0,0.45,-1.0);
+  g.add(body,tail,canopy,outline,glow);
+  return g;
+}
+
+/* ===== Game State ===== */
+const player = {
+  ship: buildShip(0x00f0ff),
+  pos: new THREE.Vector3(-20, ARENA.y, 0),
+  dir: new THREE.Vector3(1,0,0),
+  turnCD: 0, speed: 26, boost: 1, alive: true,
+  walls: [], color: 0x00f0ff,
+  distSinceTurn: 0, lastTurnSide: 0,
+  movedSinceSpawn: 0
+};
+const ai = {
+  ship: buildShip(0xff3ad2),
+  pos: new THREE.Vector3(20, ARENA.y, 0),
+  dir: new THREE.Vector3(-1,0,0),
+  turnCD: 0, speed: 26.5, boost: 1, alive: true, // slight edge so it can catch up
+  walls: [], color: 0xff3ad2,
+  distSinceTurn: 0, lastTurnSide: 0,
+  movedSinceSpawn: 0
+};
+world.add(ai.ship);
+player.ship.visible = false;
+
+/* ===== Audio ===== */
+let audioCtx=null, master=null, humP=null, humAI=null;
+function audioStart(){
+  if(audioCtx) return;
+  try{
+    audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+    master = audioCtx.createGain(); master.gain.value=0.55; master.connect(audioCtx.destination);
+    humP = audioCtx.createOscillator(); humP.type='sawtooth';
+    const hP=audioCtx.createGain(); hP.gain.value=0.06; humP.connect(hP).connect(master); humP.start();
+    humAI = audioCtx.createOscillator(); humAI.type='sawtooth';
+    const hA=audioCtx.createGain(); hA.gain.value=0.035; humAI.connect(hA).connect(master); humAI.start();
+  }catch(e){}
+}
+function setHumFreq(){
+  if(!audioCtx) return;
+  const fP = 110 + player.speed*player.boost*2.6;
+  const fA = 100 + ai.speed*ai.boost*2.2;
+  if(humP) humP.frequency.setTargetAtTime(fP, audioCtx.currentTime, 0.05);
+  if(humAI) humAI.frequency.setTargetAtTime(fA, audioCtx.currentTime, 0.05);
+}
+function sfxCollision(){
+  if(!audioCtx) return;
+  const t=audioCtx.currentTime;
+  const dur=0.28, buf=audioCtx.createBuffer(1,audioCtx.sampleRate*dur,audioCtx.sampleRate);
+  const d=buf.getChannelData(0); for(let i=0;i<d.length;i++) d[i]=(Math.random()*2-1)*Math.exp(-4*i/d.length);
+  const src=audioCtx.createBufferSource(); src.buffer=buf;
+  const f=audioCtx.createBiquadFilter(); f.type='lowpass'; f.frequency.value=1400;
+  const g=audioCtx.createGain(); g.gain.value=0.9;
+  src.connect(f).connect(g).connect(master); src.start(t); src.stop(t+dur);
+  const o=audioCtx.createOscillator(); o.type='square';
+  const og=audioCtx.createGain(); og.gain.value=0.6;
+  o.connect(og).connect(master);
+  o.frequency.setValueAtTime(800,t); o.frequency.exponentialRampToValueAtTime(220,t+0.25);
+  og.gain.setValueAtTime(0.7,t); og.gain.exponentialRampToValueAtTime(0.001,t+0.26);
+  o.start(t); o.stop(t+0.28);
+}
+
+/* ===== Round/Match State ===== */
+let started=false, paused=false;
+let youWins=0, aiWins=0, round=1;
+youWinsEl.textContent=youWins; aiWinsEl.textContent=aiWins; roundEl.textContent=round; spdEl.textContent='1.0x';
+let roundState = 'idle';
+let resetTimer = 0;
+
+/* ===== Splash / Start (stable) ===== */
+function reallyRemove(el){ try{ el.style.display='none'; el.remove(); }catch{} }
+function beginGameOnce(){
+  if(started) return;
+  started=true;
+  startOverlay.style.display='none';
+  reallyRemove(startOverlay);
+  audioStart();
+  startRound(true);
+}
+btnStart.addEventListener('click', e=>{ e.preventDefault(); e.stopPropagation(); beginGameOnce(); });
+btnHow.addEventListener('click', ()=>{ alert("Inside the cockpit.\nLeft/Right (or A/D) turn 90°. Shift/BOOST for speed.\nFirst to 3 wins takes the match."); });
+startOverlay.addEventListener('click', (e)=>{ if(e.target===startOverlay) beginGameOnce(); }, {passive:true});
+startOverlay.addEventListener('touchstart', (e)=>{ if(e.target===startOverlay){ e.preventDefault(); beginGameOnce(); } }, {passive:false});
+
+/* ===== Pause / Fullscreen ===== */
+btnPause.onclick=()=>{ if(!started) return; paused=!paused; pauseOverlay.style.display=paused?'grid':'none'; };
+btnResume.onclick=()=>{ paused=false; pauseOverlay.style.display='none'; };
+btnRestart.onclick=()=>{ youWins=aiWins=0; round=1; youWinsEl.textContent=0; aiWinsEl.textContent=0; roundEl.textContent=1; startRound(true); paused=false; pauseOverlay.style.display='none'; };
+btnFull.onclick=()=>{ document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen?.(); };
+
+/* ===== Trails & collisions ===== */
+const wallHeight = 2.0, wallHalf = 0.60; // thicker
+const HEAD_RADIUS = 0.30;
+const SELF_MIN_MOVE_BEFORE_SELF_HITS = 1.0; // units from spawn
+const WALL_GLOBAL_IMMUNE_MS  = 0;        // others: none
+const WALL_SELF_IMMUNE_MS    = 200;      // small self-immunity
+
+function neonMaterial(hex){ return new THREE.MeshBasicMaterial({ color:hex, transparent:true, opacity:1, blending:THREE.AdditiveBlending }); }
+const matP = neonMaterial(cssHex('--p1'));
+const matA = neonMaterial(cssHex('--p2'));
+function cssHex(varName){ const s=getComputedStyle(document.documentElement).getPropertyValue(varName).trim(); return parseInt(s.replace('#','0x')); }
+function addWallSegment(owner, a, b, mat){
+  const len = a.clone().setY(0).distanceTo(b.clone().setY(0));
+  if(len<0.01) return null;
+  const geo = new THREE.BoxGeometry(wallHalf*2, wallHeight, len);
+  const mesh = new THREE.Mesh(geo, mat);
+  const mid = a.clone().add(b).multiplyScalar(0.5); mid.y = ARENA.y + wallHeight/2;
+  mesh.position.copy(mid);
+  const angle = Math.atan2(b.x - a.x, b.z - a.z);
+  mesh.rotation.y = angle;
+  const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo),
+                new THREE.LineBasicMaterial({ color:0xffffff, transparent:true, opacity:0.55 }));
+  edges.renderOrder = 1;
+  mesh.add(edges);
+  mesh.renderOrder = 0;
+  world.add(mesh);
+  const seg = { a:a.clone(), b:b.clone(), mesh, owner, createdAt: performance.now() };
+  (owner==='player'?player.walls:ai.walls).push(seg);
+  return seg;
+}
+
+/* ===== Controls ===== */
+const keys=new Set();
+addEventListener('keydown',e=>{
+  keys.add(e.code);
+  if(!started || roundState!=='playing') return;
+  if(e.repeat) return;
+  if(e.code==='ArrowLeft' || e.code==='KeyA') doTurn(player,-1);
+  if(e.code==='ArrowRight'|| e.code==='KeyD') doTurn(player, 1);
+});
+addEventListener('keyup',e=>{ keys.delete(e.code); });
+btnLeft.addEventListener('click', ()=>{ if(started && roundState==='playing') doTurn(player,-1); });
+btnRight.addEventListener('click', ()=>{ if(started && roundState==='playing') doTurn(player, 1); });
+btnBoost.addEventListener('touchstart', ()=>{ if(started && roundState==='playing') boostPulse(player); }, {passive:true});
+btnBoost.addEventListener('click', ()=>{ if(started && roundState==='playing') boostPulse(player); });
+
+/* Turn & boost (with minimal anti-spin) */
+const MIN_TRAVEL_BETWEEN_TURNS = 4.4; // slightly more nimble
+const NO_REPEAT_SIDE_TIME = 0.85;
+function doTurn(ship, dir, force=false){
+  if(!ship.alive || roundState!=='playing') return;
+  if(ship.distSinceTurn < MIN_TRAVEL_BETWEEN_TURNS && !force) return;
+  if(ship.turnCD>0 && !force) return;
+
+  if(ship.lastTurnSide===dir && ship._repeatTimer>0 && !force) return;
+  ship.lastTurnSide = dir;
+  ship._repeatTimer = NO_REPEAT_SIDE_TIME;
+
+  ship.turnCD = 0.2;
+  const d = ship.dir;
+  const ang = (dir<0? -Math.PI/2 : Math.PI/2);
+  const nx = Math.round(Math.cos(ang)*d.x - Math.sin(ang)*d.z);
+  const nz = Math.round(Math.sin(ang)*d.x + Math.cos(ang)*d.z);
+  const newDir = new THREE.Vector3(Math.sign(nx),0,Math.sign(nz));
+
+  if(ship._lastDrop && ship.pos.distanceTo(ship._lastDrop)>0.02){
+    addWallSegment(ship===player?'player':'ai', ship._lastDrop, ship.pos, ship===player?matP:matA);
+    ship._lastDrop = ship.pos.clone();
+  }
+  ship.dir.copy(newDir);
+  ship.distSinceTurn = 0;
+}
+function boostPulse(ship){ ship.boost = 1.6; setTimeout(()=>{ ship.boost=1; }, 360); }
+
+/* ===== Geometry & robust collisions ===== */
+function segSegMinDist2D(a1,a2,b1,b2){
+  const u = {x:a2.x-a1.x, z:a2.z-a1.z};
+  const v = {x:b2.x-b1.x, z:b2.z-b1.z};
+  const w0= {x:a1.x-b1.x, z:a1.z-b1.z};
+  const a = u.x*u.x + u.z*u.z;
+  const b = u.x*v.x + u.z*v.z;
+  const c = v.x*v.x + v.z*v.z;
+  const d = u.x*w0.x + u.z*w0.z;
+  const e = v.x*w0.x + v.z*w0.z;
+  const DEN = a*c - b*b;
+  let sc, sN, sD = DEN;
+  let tc, tN, tD = DEN;
+  const EPS=1e-8;
+  if(DEN < EPS){ sN = 0; sD = 1; tN = e; tD = c; }
+  else{
+    sN = (b*e - c*d); tN = (a*e - b*d);
+    if(sN < 0){ sN = 0; tN = e; tD = c; }
+    else if(sN > sD){ sN = sD; tN = e + b; tD = c; }
+  }
+  if(tN < 0){ tN = 0; if(-d < 0) sN = 0; else if(-d > a) sN = sD; else { sN = -d; sD = a; } }
+  else if(tN > tD){ tN = tD; if((-d + b) < 0) sN = 0; else if((-d + b) > a) sN = sD; else { sN = (-d + b); sD = a; } }
+  sc = (Math.abs(sN) < EPS ? 0 : sN / sD);
+  tc = (Math.abs(tN) < EPS ? 0 : tN / tD);
+  const dx = w0.x + (sc*u.x) - (tc*v.x);
+  const dz = w0.z + (sc*u.z) - (tc*v.z);
+  return Math.hypot(dx,dz);
+}
+
+/* Build list of segments; include provisional segments if non-zero length */
+function allLogicalSegments(){
+  const list = [...player.walls, ...ai.walls];
+  function pushProvisional(ent, owner){
+    if(ent._lastDrop && ent.pos){
+      const a = ent._lastDrop.clone(), b = ent.pos.clone();
+      if(a.distanceTo(b) > 0.02){
+        list.push({a,b,owner,createdAt: performance.now()});
+      }
+    }
+  }
+  pushProvisional(player,'player');
+  pushProvisional(ai,'ai');
+  return list;
+}
+
+/* Helpers for segment comparison */
+function segLen2D(a,b){ const dx=a.x-b.x, dz=a.z-b.z; return Math.hypot(dx,dz); }
+function isSameSegment(a1,a2,b1,b2,eps=0.01){
+  const d1 = a1.distanceTo(b1) + a2.distanceTo(b2);
+  const d2 = a1.distanceTo(b2) + a2.distanceTo(b1);
+  return (d1<eps) || (d2<eps);
+}
+
+/* Swept collision: no global immunity, small self-immunity, expanded radius */
+function sweptHitsAnyWall(prev, curr, owner, nowMs){
+  const list = allLogicalSegments();
+  for(const s of list){
+    const own = (s.owner===owner);
+    const len = segLen2D(s.a,s.b);
+    if(len < 0.02) continue;
+
+    const age = (nowMs - (s.createdAt||nowMs));
+    if(!own && age < WALL_GLOBAL_IMMUNE_MS) continue; // 0
+    if(own && age < WALL_SELF_IMMUNE_MS) continue;
+
+    if(own && isSameSegment(prev,curr,s.a,s.b,0.02)) continue;
+    const touchingOwnTip = own && (s.b.distanceTo(prev)<0.25 || s.b.distanceTo(curr)<0.25);
+    if(touchingOwnTip) continue;
+
+    const dist = segSegMinDist2D(prev, curr, s.a, s.b);
+    if(dist <= (wallHalf + HEAD_RADIUS)) return true;
+  }
+  return false;
+}
+
+/* ===== AI: GREEDY CHASE with hazard scoring ===== */
+function aiThink(dt){
+  if(!ai.alive) return;
+  ai.turnCD = Math.max(0, ai.turnCD - dt);
+  ai._repeatTimer = Math.max(0, (ai._repeatTimer||0) - dt);
+
+  // Boost logic: if falling behind, push; if ahead and close to edge, back off a bit.
+  const gap = ai.pos.distanceTo(player.pos);
+  ai.boost = gap > 24 ? 1.18 : 1.0;
+
+  // Candidate directions: keep, left, right
+  const cand = [
+    { name:'keep', dir: ai.dir.clone(), turn: 0 },
+    { name:'left', dir: rot90(ai.dir,-1), turn: -1 },
+    { name:'right',dir: rot90(ai.dir, 1), turn:  1 },
+  ];
+
+  // Score each: lower distance-to-player after a small step is better; hazard subtracts score
+  let best = null, bestScore = -Infinity;
+  for(const c of cand){
+    const stepLen = 4.0; // virtual step to predict closeness
+    const future = ai.pos.clone().add(c.dir.clone().multiplyScalar(stepLen));
+    const distToPlayer = future.distanceTo(player.pos);
+    const closeness = 1.0 / (1.0 + distToPlayer); // 0..1
+
+    // Hazard: how soon will we hit something in this direction?
+    const free = freeDistance(ai.pos, c.dir, 16, 'ai'); // how many units clear ahead
+    const edgePenalty = edgeMarginPenalty(future, c.dir);
+    const willHit = willHitSoon(ai.pos, c.dir, 7.5, 'ai') ? 1 : 0;
+
+    // Score: chase + small reward for free space, minus penalties
+    const score = (closeness * 1.6) + (free * 0.06) - (edgePenalty * 0.9) - (willHit * 1.2);
+
+    if(score > bestScore){
+      bestScore = score; best = c;
+    }
+  }
+
+  // If turning improves score and we're allowed to turn, do it
+  if(best && best.turn !== 0 && ai.turnCD<=0){
+    doTurn(ai, best.turn);
+    return;
+  }
+
+  // If staying straight is best but we will hit something soon, bias to safer side
+  if(willHitSoon(ai.pos, ai.dir, 8.5, 'ai') && ai.turnCD<=0){
+    const leftFree = freeDistance(ai.pos, rot90(ai.dir,-1), 14, 'ai');
+    const rightFree= freeDistance(ai.pos, rot90(ai.dir, 1), 14, 'ai');
+    doTurn(ai, (rightFree>leftFree)? 1 : -1);
+    return;
+  }
+}
+
+function edgeMarginPenalty(pos, dir){
+  const m = 6.0; // margin considered "danger zone"
+  let pen = 0;
+  if(dir.x>0) pen += Math.max(0, m - (ARENA.half - pos.x));
+  if(dir.x<0) pen += Math.max(0, m - (pos.x + ARENA.half));
+  if(dir.z>0) pen += Math.max(0, m - (ARENA.half - pos.z));
+  if(dir.z<0) pen += Math.max(0, m - (pos.z + ARENA.half));
+  return pen * 0.1; // scaled down
+}
+
+function rot90(v,dir){
+  const ang = (dir<0? -Math.PI/2 : Math.PI/2);
+  const nx = Math.round(Math.cos(ang)*v.x - Math.sin(ang)*v.z);
+  const nz = Math.round(Math.sin(ang)*v.x + Math.cos(ang)*v.z);
+  return new THREE.Vector3(Math.sign(nx),0,Math.sign(nz));
+}
+function willHitSoon(pos, dir, dist, owner){
+  const step = 1.0;
+  let prev = pos.clone();
+  for(let t=step;t<=dist+1e-3;t+=step){
+    const curr = pos.clone().add(dir.clone().multiplyScalar(t));
+    if(Math.abs(curr.x)>ARENA.half || Math.abs(curr.z)>ARENA.half) return true;
+    if(sweptHitsAnyWall(prev, curr, owner, performance.now())) return true;
+    prev.copy(curr);
+  }
+  return false;
+}
+function freeDistance(pos, dir, maxDist, owner){
+  const step=1.0;
+  let prev = pos.clone();
+  for(let t=step;t<=maxDist+1e-3;t+=step){
+    const curr = pos.clone().add(dir.clone().multiplyScalar(t));
+    if(Math.abs(curr.x)>ARENA.half || Math.abs(curr.z)>ARENA.half) return t-step;
+    if(sweptHitsAnyWall(prev, curr, owner, performance.now())) return t-step;
+    prev.copy(curr);
+  }
+  return maxDist;
+}
+
+/* ===== Update visuals ===== */
+function updateShipVisual(ent){
+  const mesh = ent.ship;
+  mesh.position.copy(ent.pos).add(new THREE.Vector3(0,0.6,0));
+  if(ent.dir.x===1)      mesh.rotation.y = Math.PI;
+  else if(ent.dir.x===-1)mesh.rotation.y = 0;
+  else if(ent.dir.z===1) mesh.rotation.y = -Math.PI/2;
+  else if(ent.dir.z===-1)mesh.rotation.y = Math.PI/2;
+}
+
+/* Walls cleanup */
+function clearWalls(){
+  for(const s of [...player.walls, ...ai.walls]) world.remove(s.mesh);
+  player.walls.length=0; ai.walls.length=0;
+}
+
+/* Banner */
+function setBanner(text, kind='info', durationMs=1000){
+  banner.textContent=text;
+  banner.className=''; banner.classList.add(kind==='win'?'win':kind==='lose'?'lose':'info');
+  banner.style.display='block';
+  if(durationMs>0){
+    const now=performance.now();
+    const until=now+durationMs;
+    (function hideCheck(){
+      if(performance.now()>=until){ banner.style.display='none'; return; }
+      requestAnimationFrame(hideCheck);
+    })();
+  }
+}
+
+/* Resize */
+function resize(){ renderer.setSize(innerWidth,innerHeight); camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix(); }
+addEventListener('resize',resize); resize();
+
+/* ===== Radar (persistent trails) ===== */
+const RADAR = { sizeIndex: 1, sizes: [140, 160, 200], maxSeg: 5000 };
+btnRadar.addEventListener('click', ()=>{
+  RADAR.sizeIndex = (RADAR.sizeIndex+1)%RADAR.sizes.length;
+  const s = RADAR.sizes[RADAR.sizeIndex];
+  radarCanvas.width = radarCanvas.height = s;
+  radarCanvas.style.width = radarCanvas.style.height = s+'px';
+  btnRadar.textContent = 'Radar: ' + (['S','M','L'][RADAR.sizeIndex]);
+});
+function drawRadar(){
+  const s = radarCanvas.width, ctx = radarCtx;
+  ctx.clearRect(0,0,s,s);
+  ctx.fillStyle = 'rgba(5,10,18,0.85)'; ctx.fillRect(0,0,s,s);
+  ctx.save(); ctx.globalAlpha = 0.35; ctx.strokeStyle = '#00e0ff'; ctx.lineWidth = 1;
+  const cells = 8;
+  for(let i=1;i<cells;i++){
+    const x = (i/cells)*s;
+    ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,s); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0,x); ctx.lineTo(s,x); ctx.stroke();
+  }
+  ctx.restore();
+  ctx.strokeStyle = 'rgba(0,224,255,0.8)'; ctx.lineWidth = 2; ctx.strokeRect(1,1,s-2,s-2);
+
+  const half = ARENA.half;
+  const WX = x => ( (x + half) / (2*half) ) * s;
+  const WZ = z => ( (z + half) / (2*half) ) * s;
+
+  function drawTrail(list, color){
+    const count = Math.min(list.length, RADAR.maxSeg);
+    const start = list.length - count;
+    ctx.strokeStyle = color; ctx.lineWidth = 3; ctx.globalAlpha = 1;
+    for(let i=start;i<list.length;i++){
+      const seg = list[i]; if(!seg) continue;
+      const ax = WX(seg.a.x), az = WZ(seg.a.z);
+      const bx = WX(seg.b.x), bz = WZ(seg.b.z);
+      ctx.beginPath(); ctx.moveTo(ax,az); ctx.lineTo(bx,bz); ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  }
+  drawTrail(player.walls, '#00f0ff');
+  drawTrail(ai.walls, '#ff3ad2');
+
+  function drawBlip(ent, color){
+    const x = WX(ent.pos.x), z = WZ(ent.pos.z);
+    ctx.fillStyle = color; ctx.strokeStyle = 'white'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(x,z,5,0,Math.PI*2); ctx.fill(); ctx.stroke();
+    const tipX = WX(ent.pos.x + ent.dir.x*4);
+    const tipZ = WZ(ent.pos.z + ent.dir.z*4);
+    ctx.strokeStyle = color; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(x,z); ctx.lineTo(tipX,tipZ); ctx.stroke();
+  }
+  drawBlip(player,'#00f0ff'); drawBlip(ai,'#ff3ad2');
+}
+
+/* ===== Round control ===== */
+function startRound(resetScores=false){
+  clearWalls();
+  const mirror = (round % 2 === 0) ? -1 : 1;
+  player.pos.set(-20*mirror, ARENA.y, 0); player.dir.set(1*mirror,0,0);
+  ai.pos.set(20*mirror, ARENA.y, 0); ai.dir.set(-1*mirror,0,0);
+  player.alive=ai.alive=true;
+  player.speed=26; ai.speed=26.5;
+  player.boost=ai.boost=1;
+  player.turnCD=ai.turnCD=0;
+  player.distSinceTurn=ai.distSinceTurn=0;
+  player.lastTurnSide=ai.lastTurnSide=0;
+  player.walls.length=ai.walls.length=0;
+  player._lastDrop = player.pos.clone(); ai._lastDrop = ai.pos.clone();
+  player.movedSinceSpawn = 0; ai.movedSinceSpawn = 0;
+  updateShipVisual(ai);
+  if(resetScores){ youWins=aiWins=0; youWinsEl.textContent=0; aiWinsEl.textContent=0; round=1; roundEl.textContent=1; }
+  setBanner(`Round ${round}`, 'info', 900);
+  roundState='playing'; resetTimer=0;
+}
+
+/* ===== Main loop (shoulder-cam preserved) ===== */
+let last=performance.now();
+requestAnimationFrame(function tick(now){
+  const dt=Math.min(0.033,(now-last)/1000); last=now;
+
+  if(started && !paused){
+    if(roundState==='playing'){
+      const boosting = keys.has('ShiftLeft') || keys.has('ShiftRight');
+      if(boosting) player.boost=1.6; else if(player.boost>1.0) player.boost=1.0;
+
+      player._repeatTimer = Math.max(0,(player._repeatTimer||0)-dt);
+      ai._repeatTimer = Math.max(0,(ai._repeatTimer||0)-dt);
+      player.turnCD=Math.max(0,player.turnCD-dt);
+      ai.turnCD=Math.max(0,ai.turnCD-dt);
+
+      aiThink(dt);
+
+      const pv = player.dir.clone().multiplyScalar(player.speed*player.boost*dt);
+      const av = ai.dir.clone().multiplyScalar(ai.speed*ai.boost*dt);
+      const prevP = player.pos.clone(), prevA = ai.pos.clone();
+      const nextP = prevP.clone().add(pv);
+      const nextA = prevA.clone().add(av);
+
+      let endRound=false;
+      const nowMs = performance.now();
+
+      // Player collision (skip self-wall until moved a bit from spawn)
+      const playerSelfEligible = (player.movedSinceSpawn >= SELF_MIN_MOVE_BEFORE_SELF_HITS);
+      const playerHit = sweptHitsAnyWall(prevP, nextP, 'player', nowMs) &&
+                        (playerSelfEligible || !hitIsOnlySelf(prevP, nextP,'player'));
+      if(playerHit || Math.abs(nextP.x)>ARENA.half || Math.abs(nextP.z)>ARENA.half){
+        player.alive=false; endRound=true; sfxCollision();
+      }else{
+        player.pos.copy(nextP);
+        player.movedSinceSpawn += pv.length();
+      }
+
+      // AI collision
+      const aiSelfEligible = (ai.movedSinceSpawn >= SELF_MIN_MOVE_BEFORE_SELF_HITS);
+      const aiHit = sweptHitsAnyWall(prevA, nextA, 'ai', nowMs) &&
+                    (aiSelfEligible || !hitIsOnlySelf(prevA, nextA,'ai'));
+      if(aiHit || Math.abs(nextA.x)>ARENA.half || Math.abs(nextA.z)>ARENA.half){
+        ai.alive=false; endRound=true; sfxCollision();
+      }else{
+        ai.pos.copy(nextA);
+        ai.movedSinceSpawn += av.length();
+      }
+
+      player.distSinceTurn += pv.length(); ai.distSinceTurn += av.length();
+
+      // Trails
+      dropTrailVisual(player, prevP, player.pos, matP);
+      dropTrailVisual(ai, prevA, ai.pos, matA);
+
+      // Shoulder camera when close & roughly parallel
+      const baseCamHeight = 1.0, lookAhead = 60;
+      const side = new THREE.Vector3(-player.dir.z,0,player.dir.x);
+      const sep = ai.pos.clone().sub(player.pos);
+      const parallel = player.dir.clone().dot(ai.dir.clone());
+      const lateral = Math.abs(sep.dot(side));
+      const along   = Math.abs(sep.dot(player.dir));
+      let shoulder = 0;
+      if(parallel > 0.2 && lateral < 10.0 && along < 16.0){
+        const sign = Math.sign(sep.dot(side));
+        shoulder = 1.2 * sign;
+      }
+      const camPos = player.pos.clone()
+        .add(new THREE.Vector3(0, baseCamHeight, 0))
+        .add(side.clone().multiplyScalar(shoulder));
+      const lookTarget = player.pos.clone()
+        .add(player.dir.clone().multiplyScalar(lookAhead))
+        .add(new THREE.Vector3(0, -3.0, 0))
+        .add(side.clone().multiplyScalar(shoulder*0.9));
+      camera.position.copy(camPos);
+      camera.lookAt(lookTarget);
+
+      updateShipVisual(ai);
+      setHumFreq();
+
+      if(endRound){
+        roundState='over';
+        if(player.alive && !ai.alive){ youWins++; youWinsEl.textContent=youWins; setBanner('You won the round!', 'win', 1000); }
+        else if(!player.alive && ai.alive){ aiWins++; aiWinsEl.textContent=aiWins; setBanner('AI won the round', 'lose', 1000); }
+        else { setBanner('Both crashed!', 'info', 900); }
+        resetTimer = 0.9;
+      }
+
+      spdEl.textContent=(player.boost).toFixed(1)+'x';
+    }else if(roundState==='over'){
+      resetTimer -= dt;
+      if(resetTimer<=0){
+        if(youWins>=3 || aiWins>=3){
+          if(youWins>=3) setBanner('YOU WIN THE MATCH', 'win', 1600);
+          else setBanner('AI WINS THE MATCH', 'lose', 1600);
+          youWins=aiWins=0; youWinsEl.textContent=0; aiWinsEl.textContent=0; round=1; roundEl.textContent=1;
+        }else{
+          round++; roundEl.textContent=round;
+        }
+        startRound(false);
+      }
+    }
+  }
+
+  renderer.render(scene,camera);
+  drawRadar();
+
+  requestAnimationFrame(tick);
+});
+
+/* Visual trail helper */
+function dropTrailVisual(ent, prev, curr, mat){
+  const step=0.6;
+  if(!ent._lastDrop) ent._lastDrop = prev.clone();
+  const dist = ent._lastDrop.distanceTo(curr);
+  if(dist>=step){
+    addWallSegment(ent===player?'player':'ai', ent._lastDrop, curr, mat);
+    ent._lastDrop = curr.clone();
+  }
+}
+
+/* Helper: detect if the only segment intersected would be caller's current self segment */
+function hitIsOnlySelf(prev, curr, owner){
+  const list = [...player.walls, ...ai.walls];
+  let hitAny=false, hitOther=false;
+  for(const s of list){
+    const own = (s.owner===owner);
+    const len = segLen2D(s.a,s.b); if(len<0.02) continue;
+    if(own && isSameSegment(prev,curr,s.a,s.b,0.02)) continue; // current movement segment
+    const dist = segSegMinDist2D(prev, curr, s.a, s.b);
+    if(dist <= (wallHalf + HEAD_RADIUS)){
+      hitAny=true;
+      if(!own) hitOther=true;
+    }
+  }
+  return hitAny && !hitOther;
+}
+
+/* Prevent repeat spam on keys */
+window.addEventListener('keydown',(e)=>{
+  if(!started||paused||roundState!=='playing') return;
+  if(e.repeat) return;
+  if(e.code==='ArrowLeft' || e.code==='KeyA') doTurn(player,-1);
+  if(e.code==='ArrowRight'|| e.code==='KeyD') doTurn(player, 1);
+});
+
+/* ===== Utility ===== */
+function cssNumber(px){ return parseFloat(px)||0; }
+</script>
+</body>
+</html>

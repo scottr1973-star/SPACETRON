@@ -56,10 +56,10 @@
   }
   #banner.win{color:var(--win)} #banner.lose{color:var(--lose)} #banner.info{color:#bde0ff}
 
-  #radarWrap{position:absolute;right:10px;bottom:110px;z-index:80;display:flex;flex-direction:column;gap:6px}
+  #radarWrap{position:absolute;left:50%;bottom:20px;transform:translateX(-50%);z-index:80;display:flex;flex-direction:column;gap:6px;align-items:center}
   #radarCanvas{width:160px;height:160px;border-radius:10px;background:rgba(0,0,0,.5);
                border:1px solid rgba(255,255,255,.2);backdrop-filter:blur(3px)}
-  #radarToolbar{display:flex;gap:6px;justify-content:flex-end}
+  #radarToolbar{display:flex;gap:6px;justify-content:center}
   #btnRadar{font-size:12px;padding:6px 10px}
 
   #err{position:fixed;left:8px;bottom:8px;max-width:92%;background:#200;padding:8px 10px;color:#fbb;border:1px solid #a33;border-radius:8px;

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
-<title>Space Tron — First-Person Neon + Radar (Greedy Chase AI • Solid Trails)</title>
+<title>Space Tron — First-Person Neon + Radar (EVASION AI • Solid Trails)</title>
 <style>
   :root{
     --fg:#e6f1ff; --bg0:#060910; --bg1:#0b1530; --hud:#00e0ff;
@@ -88,7 +88,7 @@
     </div>
   </div>
 
-  <div id="hint">TURN: ←/→ or A/D • Boost: Shift / BOOST • Tap anywhere to start</div>
+  <div id="hint">TURN: ←/→ or A/D • Boost: Shift / BOOST • Press BOOST/Shift to START</div>
 
   <div id="cockpit" aria-hidden="true">
     <svg viewBox="0 0 100 100" preserveAspectRatio="none">
@@ -104,13 +104,13 @@
 
   <div id="startOverlay" class="overlay" aria-modal="true" role="dialog">
     <div class="card">
-      <h1>Space Tron — First-Person Neon</h1>
-      <p>Inside the cockpit. Lay neon walls. Don’t hit any wall or the arena edge. First to 3 rounds wins.</p>
+      <h1>Space Tron — CHASE & EVADE</h1>
+      <p>The AI is now a **Runner** (evades you). You are the **Hunter** (trap the AI).</p>
       <div class="row" style="margin-top:10px">
         <button id="btnStart" class="btn" autofocus>Start</button>
         <button id="btnHow" class="btn">How to Play</button>
       </div>
-      <p style="opacity:.8;font-size:12px;margin-top:8px">Desktop: ←/→ or A/D • Shift=Boost. Mobile: ⟲/⟳ and BOOST.</p>
+      <p style="opacity:.8;font-size:12px;margin-top:8px">Desktop: ←/→ or A/D • **Shift=Boost (1.8x)**. Mobile: ⟲/⟳ and **BOOST (1.8x)**.</p>
     </div>
   </div>
 
@@ -225,13 +225,17 @@ const player = {
   turnCD: 0, speed: 26, boost: 1, alive: true,
   walls: [], color: 0x00f0ff,
   distSinceTurn: 0, lastTurnSide: 0,
-  movedSinceSpawn: 0
+  movedSinceSpawn: 0,
+  // MOD: AI Racing logic state
+  lastTurnDir: 0,
+  lastTurnTime: 0
 };
 const ai = {
   ship: buildShip(0xff3ad2),
   pos: new THREE.Vector3(20, ARENA.y, 0),
   dir: new THREE.Vector3(-1,0,0),
-  turnCD: 0, speed: 26.5, boost: 1, alive: true, // slight edge so it can catch up
+  // MOD: AI base speed set to 31.0
+  turnCD: 0, speed: 31, boost: 1, alive: true, 
   walls: [], color: 0xff3ad2,
   distSinceTurn: 0, lastTurnSide: 0,
   movedSinceSpawn: 0
@@ -282,6 +286,7 @@ let youWins=0, aiWins=0, round=1;
 youWinsEl.textContent=youWins; aiWinsEl.textContent=aiWins; roundEl.textContent=round; spdEl.textContent='1.0x';
 let roundState = 'idle';
 let resetTimer = 0;
+let mobileBoostHeld = false; // MOD: New flag for mobile boost button
 
 /* ===== Splash / Start (stable) ===== */
 function reallyRemove(el){ try{ el.style.display='none'; el.remove(); }catch{} }
@@ -291,10 +296,12 @@ function beginGameOnce(){
   startOverlay.style.display='none';
   reallyRemove(startOverlay);
   audioStart();
-  startRound(true);
+  // MOD: Set initial state to wait for boost to start round
+  roundState = 'waiting_start';
+  setBanner('Press BOOST or Shift to start Round 1', 'info', 0);
 }
 btnStart.addEventListener('click', e=>{ e.preventDefault(); e.stopPropagation(); beginGameOnce(); });
-btnHow.addEventListener('click', ()=>{ alert("Inside the cockpit.\nLeft/Right (or A/D) turn 90°. Shift/BOOST for speed.\nFirst to 3 wins takes the match."); });
+btnHow.addEventListener('click', ()=>{ alert("The AI is the Runner (evades you). You are the Hunter (trap the AI).\nLeft/Right (or A/D) turn 90°. Shift/BOOST for speed (1.8x).\nFirst to 3 wins takes the match."); });
 startOverlay.addEventListener('click', (e)=>{ if(e.target===startOverlay) beginGameOnce(); }, {passive:true});
 startOverlay.addEventListener('touchstart', (e)=>{ if(e.target===startOverlay){ e.preventDefault(); beginGameOnce(); } }, {passive:false});
 
@@ -309,7 +316,7 @@ const wallHeight = 2.0, wallHalf = 0.60; // thicker
 const HEAD_RADIUS = 0.30;
 const SELF_MIN_MOVE_BEFORE_SELF_HITS = 1.0; // units from spawn
 const WALL_GLOBAL_IMMUNE_MS  = 0;        // others: none
-const WALL_SELF_IMMUNE_MS    = 200;      // small self-immunity
+const WALL_SELF_IMMUNE_MS    = 400;      // MOD: Increased self-immunity (0.4s) to fix phantom crash
 
 function neonMaterial(hex){ return new THREE.MeshBasicMaterial({ color:hex, transparent:true, opacity:1, blending:THREE.AdditiveBlending }); }
 const matP = neonMaterial(cssHex('--p1'));
@@ -347,14 +354,19 @@ addEventListener('keydown',e=>{
 addEventListener('keyup',e=>{ keys.delete(e.code); });
 btnLeft.addEventListener('click', ()=>{ if(started && roundState==='playing') doTurn(player,-1); });
 btnRight.addEventListener('click', ()=>{ if(started && roundState==='playing') doTurn(player, 1); });
-btnBoost.addEventListener('touchstart', ()=>{ if(started && roundState==='playing') boostPulse(player); }, {passive:true});
-btnBoost.addEventListener('click', ()=>{ if(started && roundState==='playing') boostPulse(player); });
+
+// MOD: Mobile Boost button to use the flag for sustained boost
+btnBoost.addEventListener('touchstart', ()=>{ if(started) mobileBoostHeld=true; }, {passive:true});
+btnBoost.addEventListener('touchend', ()=>{ mobileBoostHeld=false; }, {passive:true});
+btnBoost.addEventListener('click', ()=>{ 
+    if(roundState==='waiting_start') startRound(true); 
+});
 
 /* Turn & boost (with minimal anti-spin) */
-const MIN_TRAVEL_BETWEEN_TURNS = 4.4; // slightly more nimble
-const NO_REPEAT_SIDE_TIME = 0.85;
+const MIN_TRAVEL_BETWEEN_TURNS = 3.0; // MOD: Reduced from 4.4 for tighter turning/responsiveness
+const NO_REPEAT_SIDE_TIME = 0.45;    // MOD: Reduced from 0.85 to decrease turn 'lag'
 function doTurn(ship, dir, force=false){
-  if(!ship.alive || roundState!=='playing') return;
+  if(!ship.alive || (roundState!=='playing' && !force)) return;
   if(ship.distSinceTurn < MIN_TRAVEL_BETWEEN_TURNS && !force) return;
   if(ship.turnCD>0 && !force) return;
 
@@ -375,8 +387,13 @@ function doTurn(ship, dir, force=false){
   }
   ship.dir.copy(newDir);
   ship.distSinceTurn = 0;
+  
+  // MOD: Record turn time and direction (kept for potential future uses, but mirroring is removed)
+  if(ship === player) {
+      player.lastTurnDir = dir;
+      player.lastTurnTime = performance.now();
+  }
 }
-function boostPulse(ship){ ship.boost = 1.6; setTimeout(()=>{ ship.boost=1; }, 360); }
 
 /* ===== Geometry & robust collisions ===== */
 function segSegMinDist2D(a1,a2,b1,b2){
@@ -441,7 +458,8 @@ function sweptHitsAnyWall(prev, curr, owner, nowMs){
 
     const age = (nowMs - (s.createdAt||nowMs));
     if(!own && age < WALL_GLOBAL_IMMUNE_MS) continue; // 0
-    if(own && age < WALL_SELF_IMMUNE_MS) continue;
+    // MOD: Use new 400ms self-immunity here
+    if(own && age < WALL_SELF_IMMUNE_MS) continue; 
 
     if(own && isSameSegment(prev,curr,s.a,s.b,0.02)) continue;
     const touchingOwnTip = own && (s.b.distanceTo(prev)<0.25 || s.b.distanceTo(curr)<0.25);
@@ -453,16 +471,16 @@ function sweptHitsAnyWall(prev, curr, owner, nowMs){
   return false;
 }
 
-/* ===== AI: GREEDY CHASE with hazard scoring ===== */
+/* ===== AI: EVASION RUNNER ===== */
 function aiThink(dt){
   if(!ai.alive) return;
   ai.turnCD = Math.max(0, ai.turnCD - dt);
   ai._repeatTimer = Math.max(0, (ai._repeatTimer||0) - dt);
 
-  // Boost logic: if falling behind, push; if ahead and close to edge, back off a bit.
-  const gap = ai.pos.distanceTo(player.pos);
-  ai.boost = gap > 24 ? 1.18 : 1.0;
+  ai.boost = 1.0; 
 
+  // --- EVASION RUNNER LOGIC (FLEE AND SURVIVE) ---
+  
   // Candidate directions: keep, left, right
   const cand = [
     { name:'keep', dir: ai.dir.clone(), turn: 0 },
@@ -470,21 +488,25 @@ function aiThink(dt){
     { name:'right',dir: rot90(ai.dir, 1), turn:  1 },
   ];
 
-  // Score each: lower distance-to-player after a small step is better; hazard subtracts score
   let best = null, bestScore = -Infinity;
   for(const c of cand){
-    const stepLen = 4.0; // virtual step to predict closeness
+    const stepLen = 4.0; // virtual step to predict position
     const future = ai.pos.clone().add(c.dir.clone().multiplyScalar(stepLen));
     const distToPlayer = future.distanceTo(player.pos);
-    const closeness = 1.0 / (1.0 + distToPlayer); // 0..1
+    
+    // SCORING FOR EVASION (FLEE): Maximize distance from player AND open space.
+    const fleeFactor = 0.1;   // Weight for distance from player (fleeing)
+    const spaceFactor = 0.03; // Weight for open space (survival)
+    const hitPenalty = 5.0;   // Massive crash penalty (Life-or-death priority)
+    const edgePen = 1.5;      // High penalty for arena edges
 
-    // Hazard: how soon will we hit something in this direction?
-    const free = freeDistance(ai.pos, c.dir, 16, 'ai'); // how many units clear ahead
+    // Check distance clear ahead (Radar info)
+    const free = freeDistance(ai.pos, c.dir, 22, 'ai'); 
     const edgePenalty = edgeMarginPenalty(future, c.dir);
-    const willHit = willHitSoon(ai.pos, c.dir, 7.5, 'ai') ? 1 : 0;
+    const willHit = willHitSoon(ai.pos, c.dir, 16.0, 'ai') ? 1 : 0; 
 
-    // Score: chase + small reward for free space, minus penalties
-    const score = (closeness * 1.6) + (free * 0.06) - (edgePenalty * 0.9) - (willHit * 1.2);
+    // Score: distance from player (flee) + open space - penalties
+    const score = (distToPlayer * fleeFactor) + (free * spaceFactor) - (edgePenalty * edgePen) - (willHit * hitPenalty);
 
     if(score > bestScore){
       bestScore = score; best = c;
@@ -497,10 +519,10 @@ function aiThink(dt){
     return;
   }
 
-  // If staying straight is best but we will hit something soon, bias to safer side
-  if(willHitSoon(ai.pos, ai.dir, 8.5, 'ai') && ai.turnCD<=0){
-    const leftFree = freeDistance(ai.pos, rot90(ai.dir,-1), 14, 'ai');
-    const rightFree= freeDistance(ai.pos, rot90(ai.dir, 1), 14, 'ai');
+  // Final emergency check for wall hugging
+  if(willHitSoon(ai.pos, ai.dir, 16.0, 'ai') && ai.turnCD<=0){
+    const leftFree = freeDistance(ai.pos, rot90(ai.dir,-1), 18, 'ai');
+    const rightFree= freeDistance(ai.pos, rot90(ai.dir, 1), 18, 'ai');
     doTurn(ai, (rightFree>leftFree)? 1 : -1);
     return;
   }
@@ -637,11 +659,12 @@ function drawRadar(){
 /* ===== Round control ===== */
 function startRound(resetScores=false){
   clearWalls();
-  const mirror = (round % 2 === 0) ? -1 : 1;
-  player.pos.set(-20*mirror, ARENA.y, 0); player.dir.set(1*mirror,0,0);
-  ai.pos.set(20*mirror, ARENA.y, 0); ai.dir.set(-1*mirror,0,0);
+  // MOD: Fixed start positions for Chase/Evasion mode (Player always starts x=-20, dir=+1)
+  player.pos.set(-20, ARENA.y, 0); player.dir.set(1,0,0);
+  ai.pos.set(20, ARENA.y, 0); ai.dir.set(-1,0,0);
   player.alive=ai.alive=true;
-  player.speed=26; ai.speed=26.5;
+  // AI speed remains 31.0 (faster than player's 26)
+  player.speed=26; ai.speed=31; 
   player.boost=ai.boost=1;
   player.turnCD=ai.turnCD=0;
   player.distSinceTurn=ai.distSinceTurn=0;
@@ -649,9 +672,13 @@ function startRound(resetScores=false){
   player.walls.length=ai.walls.length=0;
   player._lastDrop = player.pos.clone(); ai._lastDrop = ai.pos.clone();
   player.movedSinceSpawn = 0; ai.movedSinceSpawn = 0;
+  // MOD: Reset player turn state (mirroring is removed, but state kept clean)
+  player.lastTurnDir = 0;
+  player.lastTurnTime = 0;
+  
   updateShipVisual(ai);
   if(resetScores){ youWins=aiWins=0; youWinsEl.textContent=0; aiWinsEl.textContent=0; round=1; roundEl.textContent=1; }
-  setBanner(`Round ${round}`, 'info', 900);
+  setBanner(`Round ${round}: GO!`, 'info', 900);
   roundState='playing'; resetTimer=0;
 }
 
@@ -661,9 +688,19 @@ requestAnimationFrame(function tick(now){
   const dt=Math.min(0.033,(now-last)/1000); last=now;
 
   if(started && !paused){
+    const boosting = keys.has('ShiftLeft') || keys.has('ShiftRight') || mobileBoostHeld;
+    
+    if(boosting){
+        // MOD: Start the round if waiting for start
+        if(roundState==='waiting_start'){
+            startRound(true);
+        }
+        player.boost=1.8; // MOD: Sustained 1.8x boost
+    } else if(player.boost > 1.0){
+        player.boost=1.0;
+    }
+
     if(roundState==='playing'){
-      const boosting = keys.has('ShiftLeft') || keys.has('ShiftRight');
-      if(boosting) player.boost=1.6; else if(player.boost>1.0) player.boost=1.0;
 
       player._repeatTimer = Math.max(0,(player._repeatTimer||0)-dt);
       ai._repeatTimer = Math.max(0,(ai._repeatTimer||0)-dt);
@@ -739,7 +776,7 @@ requestAnimationFrame(function tick(now){
         if(player.alive && !ai.alive){ youWins++; youWinsEl.textContent=youWins; setBanner('You won the round!', 'win', 1000); }
         else if(!player.alive && ai.alive){ aiWins++; aiWinsEl.textContent=aiWins; setBanner('AI won the round', 'lose', 1000); }
         else { setBanner('Both crashed!', 'info', 900); }
-        resetTimer = 0.9;
+        resetTimer = 2.0; // Longer reset timer for longer rounds
       }
 
       spdEl.textContent=(player.boost).toFixed(1)+'x';
@@ -750,10 +787,13 @@ requestAnimationFrame(function tick(now){
           if(youWins>=3) setBanner('YOU WIN THE MATCH', 'win', 1600);
           else setBanner('AI WINS THE MATCH', 'lose', 1600);
           youWins=aiWins=0; youWinsEl.textContent=0; aiWinsEl.textContent=0; round=1; roundEl.textContent=1;
+          roundState = 'waiting_start'; // Go back to waiting for start
+          setBanner('Press BOOST or Shift to start New Match', 'info', 0);
         }else{
           round++; roundEl.textContent=round;
+          roundState = 'waiting_start'; // Go back to waiting for start
+          setBanner(`Press BOOST or Shift to start Round ${round}`, 'info', 0);
         }
-        startRound(false);
       }
     }
   }

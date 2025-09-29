@@ -56,8 +56,8 @@
   }
   #banner.win{color:var(--win)} #banner.lose{color:var(--lose)} #banner.info{color:#bde0ff}
 
-  #radarWrap{position:absolute;left:50%;bottom:20px;transform:translateX(-50%);z-index:80;display:flex;flex-direction:column;gap:6px;align-items:center}
-  #radarCanvas{width:160px;height:160px;border-radius:10px;background:rgba(0,0,0,.5);
+  #radarWrap{position:absolute;left:50%;bottom:95px;transform:translateX(-50%);z-index:80;display:flex;flex-direction:column;gap:6px;align-items:center}
+  #radarCanvas{width:140px;height:140px;border-radius:10px;background:rgba(0,0,0,.5);
                border:1px solid rgba(255,255,255,.2);backdrop-filter:blur(3px)}
   #radarToolbar{display:flex;gap:6px;justify-content:center}
   #btnRadar{font-size:12px;padding:6px 10px}
@@ -82,9 +82,9 @@
   </div>
 
   <div id="radarWrap">
-    <canvas id="radarCanvas" width="160" height="160"></canvas>
+    <canvas id="radarCanvas" width="140" height="140"></canvas>
     <div id="radarToolbar">
-      <button id="btnRadar" class="btn">Radar: M</button>
+      <button id="btnRadar" class="btn">Radar: S</button>
     </div>
   </div>
 
@@ -627,7 +627,7 @@ function resize(){ renderer.setSize(innerWidth,innerHeight); camera.aspect=inner
 addEventListener('resize',resize); resize();
 
 /* ===== Radar (persistent trails) ===== */
-const RADAR = { sizeIndex: 1, sizes: [140, 160, 200], maxSeg: 5000 };
+const RADAR = { sizeIndex: 0, sizes: [140, 160, 200], maxSeg: 5000 };
 btnRadar.addEventListener('click', ()=>{
   RADAR.sizeIndex = (RADAR.sizeIndex+1)%RADAR.sizes.length;
   const s = RADAR.sizes[RADAR.sizeIndex];

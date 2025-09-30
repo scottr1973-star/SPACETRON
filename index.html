@@ -3,11 +3,11 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
-<title>Space Tron — Third-Person CHASE & EVADE (Solid Trails)</title>
+<title>Space Tron — First-Person Neon + Radar (EVASION AI • Solid Trails)</title>
 <style>
   :root{
     --fg:#e6f1ff; --bg0:#060910; --bg1:#0b1530; --hud:#00e0ff;
-    --p1:#00f0ff; --p1glow:#7af8ff; --p2:#ff3ad2; --p2glow:#ff83ea;
+    --p1:#00f0ff; --p2:#ff3ad2;
     --win:#7dff9a; --lose:#ff5a7a; --banner:#101622cc;
   }
   html,body{height:100%;margin:0;background:
@@ -19,7 +19,6 @@
   #host{position:fixed;inset:0;overflow:hidden}
   canvas.webgl{display:block;width:100%;height:100%;touch-action:none}
 
-  /* HUD */
   #hudTop{position:absolute;left:12px;top:12px;display:flex;gap:10px;z-index:60;pointer-events:none}
   .pill{background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.12);
         border-radius:999px;padding:6px 10px;font-weight:800;backdrop-filter:blur(3px)}
@@ -28,59 +27,48 @@
        color:var(--fg);font-weight:800;cursor:pointer;backdrop-filter:blur(3px)}
   .btn:active{transform:scale(.98)}
 
-  /* Cockpit UI removed */
+  #cockpit{position:absolute;inset:0;pointer-events:none;z-index:50}
+  #cockpit svg{width:100%;height:100%}
+  .ck{fill:none;stroke:var(--hud);stroke-width:2.5;opacity:.85;filter:drop-shadow(0 0 6px rgba(0,224,255,.6))}
+  .reticle{stroke-width:1.6;opacity:.9}
 
-  /* RADAR STYLES (MODIFIED) */
-  #radarWrap{
-    position:absolute;
-    left:50%;
-    bottom:10px; /* MOVED DOWN: Adjusted to 10px */
-    transform:translateX(-50%);
-    z-index:80;
-    display:flex; /* Kept for centering */
-    align-items:center;
-  }
-  #radarCanvas{width:160px;height:160px;border-radius:10px;background:rgba(0,0,0,.5);
-               border:1px solid rgba(255,255,255,.2);backdrop-filter:blur(3px)}
-  /* #radarToolbar removed */
-
-  /* Overlays */
   .overlay{position:absolute;inset:0;display:grid;place-items:center;background:rgba(0,0,0,.55);
            backdrop-filter:blur(6px);z-index:9999;pointer-events:auto}
   .card{background:linear-gradient(180deg,rgba(255,255,255,.07),rgba(255,255,255,.04));border:1px solid rgba(255,255,255,.12);
         border-radius:16px;padding:20px 24px;text-align:center;max-width:560px}
   .row{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
 
-  /* Mobile controls (UPDATED STYLES) */
   #mobileControls{position:absolute;inset:0;pointer-events:none;z-index:70}
   
-  /* Container for the left turn button */
-  #leftControls{position:absolute;left:10px;bottom:10px;pointer-events:auto;}
-  /* Container for the right turn and boost buttons */
-  #rightControls{position:absolute;right:10px;bottom:10px;display:flex;flex-direction:column;gap:10px;align-items:flex-end;pointer-events:auto;}
+  /* Container for the Left Turn button */
+  #turnBtns{position:absolute;left:10px;bottom:10px;display:flex;gap:10px;pointer-events:auto}
+  
+  /* Container for the Right Turn and Boost button on the right side */
+  #rightMobileBtns{
+    position:absolute;
+    right:10px;
+    bottom:10px;
+    display:flex;
+    flex-direction:column;
+    gap:10px;
+    pointer-events:auto;
+  }
 
+  /* Turn buttons (72x72px) */
   .round{width:72px;height:72px;border-radius:999px;border:0;background:rgba(255,255,255,.12);color:var(--fg);
          font-weight:900;letter-spacing:.6px;box-shadow:0 6px 14px rgba(0,0,0,.35)}
   #btnLeft::before{content:"⟲";font-size:30px}
   #btnRight::before{content:"⟳";font-size:30px}
-
-  /* Boost button style (MODIFIED) */
+  
+  /* Boost button is 64x64px */
   #btnBoost{
-    width:72px; /* Consistent size with turn buttons */
-    height:72px; 
+    width:64px;
+    height:64px;
     border-radius:999px;border:0;
     background:linear-gradient(180deg,#ffd35a,#ff9e3d);
-    color:transparent; /* Hide text */
-    font-weight:900;letter-spacing:.6px;
-    pointer-events:auto;
-    /* Use base64 encoded SVG for 'BOOST' (YELLOW FILL) to prevent text selection */
-    background-image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA3MiA3MiI+PHRleHQgeD0iMzYiIHk9IjQ1IiBmb250LWZhbWlseT0ic3lzdGVtLXVpLC1hcHBsZS1zeXN0ZW0sU2Vnb2UgVUkiIGZvbnQtd2VpZ2h0PSI5MDAiIGZvbnQtc2l6ZT0iMTQiIGZpbGw9IiNGRkZGMDAiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGxldHRlci1zcGFjaW5nPSIuNnB4Ij5CT09TVDwvdGV4dD48L3N2ZyI+");
-    background-size: 80%;
-    background-repeat: no-repeat;
-    background-position: center;
+    color:#081017;font-weight:900;letter-spacing:.6px;pointer-events:auto
   }
 
-  /* Banner for round/match messages (no alerts) */
   #banner{
     position:absolute;left:50%;top:14%;transform:translateX(-50%);
     background:var(--banner);border:1px solid rgba(255,255,255,.15);
@@ -89,7 +77,18 @@
   }
   #banner.win{color:var(--win)} #banner.lose{color:var(--lose)} #banner.info{color:#bde0ff}
 
-  /* Error box */
+  /* MODIFIED: Radar position is moved to bottom: 10px */
+  #radarWrap{
+    position:absolute;
+    left:50%;
+    bottom:10px; /* LOWERED POSITION */
+    transform:translateX(-50%);
+    z-index:80;
+  }
+  #radarCanvas{width:140px;height:140px;border-radius:10px;background:rgba(0,0,0,.5);
+               border:1px solid rgba(255,255,255,.2);backdrop-filter:blur(3px)}
+  /* Removed styles for #radarToolbar and #btnRadar */
+
   #err{position:fixed;left:8px;bottom:8px;max-width:92%;background:#200;padding:8px 10px;color:#fbb;border:1px solid #a33;border-radius:8px;
        font:12px/1.3 monospace;display:none;z-index:10000;white-space:pre-wrap}
 </style>
@@ -109,15 +108,31 @@
     <button id="btnFull" class="btn">Fullscreen</button>
   </div>
 
+  <div id="radarWrap">
+    <canvas id="radarCanvas" width="140" height="140"></canvas>
+  </div>
+
+  <div id="cockpit" aria-hidden="true">
+    <svg viewBox="0 0 100 100" preserveAspectRatio="none">
+      <path class="ck" d="M2,12 C18,2 82,2 98,12" />
+      <path class="ck" d="M4,14 L4,36" />
+      <path class="ck" d="M96,14 L96,36" />
+      <path class="ck" d="M4,36 C4,46 10,52 20,56" />
+      <path class="ck" d="M96,36 C96,46 90,52 80,56" />
+      <circle class="ck reticle" cx="50" cy="56" r="5"/>
+      <path class="ck reticle" d="M45,56 h-6 M61,56 h6 M50,51 v-6 M50,61 v6"/>
+    </svg>
+  </div>
+
   <div id="startOverlay" class="overlay" aria-modal="true" role="dialog">
     <div class="card">
-      <h1>Space Tron — CHASE & EVADE (Third-Person)</h1>
-      <p>The AI is the **Runner** (evades you). You are the **Hunter** (trap the AI).</p>
+      <h1>Space Tron — CHASE & EVADE</h1>
+      <p>The AI is now a **Runner** (evades you). You are the **Hunter** (trap the AI).</p>
       <div class="row" style="margin-top:10px">
         <button id="btnStart" class="btn" autofocus>Start</button>
         <button id="btnHow" class="btn">How to Play</button>
       </div>
-      <p style="opacity:.8;font-size:12px;margin-top:8px">Desktop: ←/→ or A/D • **Shift=Boost (1.8x)**. Mobile: ⟲/⟳ and **BOOST (1.8x)**. Press BOOST/Shift to START.</p>
+      <p style="opacity:.8;font-size:12px;margin-top:8px">Desktop: ←/→ or A/D • **Shift=Boost (1.8x)**. Mobile: ⟲/⟳ and **BOOST (1.8x)**.</p>
     </div>
   </div>
 
@@ -132,18 +147,14 @@
   </div>
 
   <div id="mobileControls">
-    <div id="leftControls">
+    <div id="turnBtns">
       <button id="btnLeft" class="round" aria-label="Turn Left"></button>
     </div>
-    
-    <div id="rightControls">
-      <button id="btnBoost"></button> <button id="btnRight" class="round" aria-label="Turn Right"></button>
+    <div id="rightMobileBtns">
+      <button id="btnBoost">BOOST</button>
+      <button id="btnRight" class="round" aria-label="Turn Right"></button>
     </div>
   </div>
-  
-  <div id="radarWrap">
-    <canvas id="radarCanvas" width="160" height="160"></canvas>
-    </div>
 
   <div id="banner" class="info">Ready</div>
 </div>
@@ -178,7 +189,7 @@ const btnBoost=document.getElementById('btnBoost');
 const banner=document.getElementById('banner');
 const radarCanvas=document.getElementById('radarCanvas');
 const radarCtx=radarCanvas.getContext('2d');
-// const btnRadar removed
+// REMOVED: const btnRadar=document.getElementById('btnRadar');
 
 /* ===== Three.js setup ===== */
 const renderer=new THREE.WebGLRenderer({canvas,antialias:true,powerPreference:'high-performance'});
@@ -189,9 +200,7 @@ renderer.toneMapping=THREE.ACESFilmicToneMapping; renderer.toneMappingExposure=1
 const scene=new THREE.Scene();
 scene.fog=new THREE.Fog(0x03060c,120,1400);
 const world=new THREE.Group(); scene.add(world);
-// Camera is now added directly to the scene, not a child of player
 const camera=new THREE.PerspectiveCamera(80,innerWidth/innerHeight,0.05,4000);
-scene.add(camera);
 
 /* Lights */
 scene.add(new THREE.HemisphereLight(0x88ccff,0x001015,0.95));
@@ -265,6 +274,7 @@ const player = {
   walls: [], color: 0x00f0ff,
   distSinceTurn: 0, lastTurnSide: 0,
   movedSinceSpawn: 0,
+  // MOD: AI Racing logic state
   lastTurnDir: 0,
   lastTurnTime: 0
 };
@@ -272,14 +282,14 @@ const ai = {
   ship: buildShip(0xff3ad2),
   pos: new THREE.Vector3(20, ARENA.y, 0),
   dir: new THREE.Vector3(-1,0,0),
+  // MOD: AI base speed set to 31.0
   turnCD: 0, speed: 31, boost: 1, alive: true, 
   walls: [], color: 0xff3ad2,
   distSinceTurn: 0, lastTurnSide: 0,
   movedSinceSpawn: 0
 };
-// Both ships must be added to the world for third person view
-world.add(player.ship, ai.ship);
-// player.ship.visible = false; <-- REMOVED: Player ship must be visible
+world.add(ai.ship);
+player.ship.visible = false;
 
 /* ===== Audio ===== */
 let audioCtx=null, master=null, humP=null, humAI=null;
@@ -324,9 +334,9 @@ let youWins=0, aiWins=0, round=1;
 youWinsEl.textContent=youWins; aiWinsEl.textContent=aiWins; roundEl.textContent=round; spdEl.textContent='1.0x';
 let roundState = 'idle';
 let resetTimer = 0;
-let mobileBoostHeld = false;
+let mobileBoostHeld = false; // MOD: New flag for mobile boost button
 
-/* ===== Splash / Start ===== */
+/* ===== Splash / Start (stable) ===== */
 function reallyRemove(el){ try{ el.style.display='none'; el.remove(); }catch{} }
 function beginGameOnce(){
   if(started) return;
@@ -334,7 +344,7 @@ function beginGameOnce(){
   startOverlay.style.display='none';
   reallyRemove(startOverlay);
   audioStart();
-  // Set initial state to wait for boost to start round
+  // MOD: Set initial state to wait for boost to start round
   roundState = 'waiting_start';
   setBanner('Press BOOST or Shift to start Round 1', 'info', 0);
 }
@@ -346,28 +356,20 @@ startOverlay.addEventListener('touchstart', (e)=>{ if(e.target===startOverlay){ 
 /* ===== Pause / Fullscreen ===== */
 btnPause.onclick=()=>{ if(!started) return; paused=!paused; pauseOverlay.style.display=paused?'grid':'none'; };
 btnResume.onclick=()=>{ paused=false; pauseOverlay.style.display='none'; };
-btnRestart.onclick=()=>{ 
-  youWins=aiWins=0; round=1; 
-  youWinsEl.textContent=0; aiWinsEl.textContent=0; roundEl.textContent=1; 
-  startRound(true); 
-  paused=false; pauseOverlay.style.display='none'; 
-  roundState = 'waiting_start'; // Ensure new match waits for start signal
-  setBanner('Press BOOST or Shift to start Round 1', 'info', 0);
-};
+btnRestart.onclick=()=>{ youWins=aiWins=0; round=1; youWinsEl.textContent=0; aiWinsEl.textContent=0; roundEl.textContent=1; startRound(true); paused=false; pauseOverlay.style.display='none'; };
 btnFull.onclick=()=>{ document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen?.(); };
 
 /* ===== Trails & collisions ===== */
-const wallHeight = 2.0, wallHalf = 0.60;
+const wallHeight = 2.0, wallHalf = 0.60; // thicker
 const HEAD_RADIUS = 0.30;
-const SELF_MIN_MOVE_BEFORE_SELF_HITS = 1.0;
-const WALL_GLOBAL_IMMUNE_MS  = 0;
-const WALL_SELF_IMMUNE_MS    = 400;
+const SELF_MIN_MOVE_BEFORE_SELF_HITS = 1.0; // units from spawn
+const WALL_GLOBAL_IMMUNE_MS  = 0;        // others: none
+const WALL_SELF_IMMUNE_MS    = 400;      // MOD: Increased self-immunity (0.4s) to fix phantom crash
 
 function neonMaterial(hex){ return new THREE.MeshBasicMaterial({ color:hex, transparent:true, opacity:1, blending:THREE.AdditiveBlending }); }
-function cssHex(varName){ const s=getComputedStyle(document.documentElement).getPropertyValue(varName).trim(); return parseInt(s.replace('#','0x')); }
 const matP = neonMaterial(cssHex('--p1'));
 const matA = neonMaterial(cssHex('--p2'));
-
+function cssHex(varName){ const s=getComputedStyle(document.documentElement).getPropertyValue(varName).trim(); return parseInt(s.replace('#','0x')); }
 function addWallSegment(owner, a, b, mat){
   const len = a.clone().setY(0).distanceTo(b.clone().setY(0));
   if(len<0.01) return null;
@@ -401,18 +403,16 @@ addEventListener('keyup',e=>{ keys.delete(e.code); });
 btnLeft.addEventListener('click', ()=>{ if(started && roundState==='playing') doTurn(player,-1); });
 btnRight.addEventListener('click', ()=>{ if(started && roundState==='playing') doTurn(player, 1); });
 
+// MOD: Mobile Boost button to use the flag for sustained boost
 btnBoost.addEventListener('touchstart', ()=>{ if(started) mobileBoostHeld=true; }, {passive:true});
 btnBoost.addEventListener('touchend', ()=>{ mobileBoostHeld=false; }, {passive:true});
 btnBoost.addEventListener('click', ()=>{ 
-    if(roundState==='waiting_start') { 
-      startRound(false); 
-      roundState = 'playing';
-    } 
+    if(roundState==='waiting_start') startRound(true); 
 });
 
 /* Turn & boost (with minimal anti-spin) */
-const MIN_TRAVEL_BETWEEN_TURNS = 3.0;
-const NO_REPEAT_SIDE_TIME = 0.45;
+const MIN_TRAVEL_BETWEEN_TURNS = 3.0; // MOD: Reduced from 4.4 for tighter turning/responsiveness
+const NO_REPEAT_SIDE_TIME = 0.45;    // MOD: Reduced from 0.85 to decrease turn 'lag'
 function doTurn(ship, dir, force=false){
   if(!ship.alive || (roundState!=='playing' && !force)) return;
   if(ship.distSinceTurn < MIN_TRAVEL_BETWEEN_TURNS && !force) return;
@@ -436,13 +436,14 @@ function doTurn(ship, dir, force=false){
   ship.dir.copy(newDir);
   ship.distSinceTurn = 0;
   
+  // MOD: Record turn time and direction (kept for potential future uses, but mirroring is removed)
   if(ship === player) {
       player.lastTurnDir = dir;
       player.lastTurnTime = performance.now();
   }
 }
 
-/* ===== Geometry & robust collisions (unmodified) ===== */
+/* ===== Geometry & robust collisions ===== */
 function segSegMinDist2D(a1,a2,b1,b2){
   const u = {x:a2.x-a1.x, z:a2.z-a1.z};
   const v = {x:b2.x-b1.x, z:b2.z-b1.z};
@@ -470,12 +471,8 @@ function segSegMinDist2D(a1,a2,b1,b2){
   const dz = w0.z + (sc*u.z) - (tc*v.z);
   return Math.hypot(dx,dz);
 }
-function segLen2D(a,b){ const dx=a.x-b.x, dz=a.z-b.z; return Math.hypot(dx,dz); }
-function isSameSegment(a1,a2,b1,b2,eps=0.01){
-  const d1 = a1.distanceTo(b1) + a2.distanceTo(b2);
-  const d2 = a1.distanceTo(b2) + a2.distanceTo(b1);
-  return (d1<eps) || (d2<eps);
-}
+
+/* Build list of segments; include provisional segments if non-zero length */
 function allLogicalSegments(){
   const list = [...player.walls, ...ai.walls];
   function pushProvisional(ent, owner){
@@ -490,6 +487,16 @@ function allLogicalSegments(){
   pushProvisional(ai,'ai');
   return list;
 }
+
+/* Helpers for segment comparison */
+function segLen2D(a,b){ const dx=a.x-b.x, dz=a.z-b.z; return Math.hypot(dx,dz); }
+function isSameSegment(a1,a2,b1,b2,eps=0.01){
+  const d1 = a1.distanceTo(b1) + a2.distanceTo(b2);
+  const d2 = a1.distanceTo(b2) + a2.distanceTo(b1);
+  return (d1<eps) || (d2<eps);
+}
+
+/* Swept collision: no global immunity, small self-immunity, expanded radius */
 function sweptHitsAnyWall(prev, curr, owner, nowMs){
   const list = allLogicalSegments();
   for(const s of list){
@@ -498,7 +505,8 @@ function sweptHitsAnyWall(prev, curr, owner, nowMs){
     if(len < 0.02) continue;
 
     const age = (nowMs - (s.createdAt||nowMs));
-    if(!own && age < WALL_GLOBAL_IMMUNE_MS) continue; 
+    if(!own && age < WALL_GLOBAL_IMMUNE_MS) continue; // 0
+    // MOD: Use new 400ms self-immunity here
     if(own && age < WALL_SELF_IMMUNE_MS) continue; 
 
     if(own && isSameSegment(prev,curr,s.a,s.b,0.02)) continue;
@@ -510,23 +518,8 @@ function sweptHitsAnyWall(prev, curr, owner, nowMs){
   }
   return false;
 }
-function hitIsOnlySelf(prev, curr, owner){
-  const list = [...player.walls, ...ai.walls];
-  let hitAny=false, hitOther=false;
-  for(const s of list){
-    const own = (s.owner===owner);
-    const len = segLen2D(s.a,s.b); if(len<0.02) continue;
-    if(own && isSameSegment(prev,curr,s.a,s.b,0.02)) continue;
-    const dist = segSegMinDist2D(prev, curr, s.a, s.b);
-    if(dist <= (wallHalf + HEAD_RADIUS)){
-      hitAny=true;
-      if(!own) hitOther=true;
-    }
-  }
-  return hitAny && !hitOther;
-}
 
-/* ===== AI: EVASION RUNNER (unmodified) ===== */
+/* ===== AI: EVASION RUNNER ===== */
 function aiThink(dt){
   if(!ai.alive) return;
   ai.turnCD = Math.max(0, ai.turnCD - dt);
@@ -534,6 +527,9 @@ function aiThink(dt){
 
   ai.boost = 1.0; 
 
+  // --- EVASION RUNNER LOGIC (FLEE AND SURVIVE) ---
+  
+  // Candidate directions: keep, left, right
   const cand = [
     { name:'keep', dir: ai.dir.clone(), turn: 0 },
     { name:'left', dir: rot90(ai.dir,-1), turn: -1 },
@@ -542,19 +538,22 @@ function aiThink(dt){
 
   let best = null, bestScore = -Infinity;
   for(const c of cand){
-    const stepLen = 4.0;
+    const stepLen = 4.0; // virtual step to predict position
     const future = ai.pos.clone().add(c.dir.clone().multiplyScalar(stepLen));
     const distToPlayer = future.distanceTo(player.pos);
     
-    const fleeFactor = 0.1;
-    const spaceFactor = 0.03;
-    const hitPenalty = 5.0;
-    const edgePen = 1.5;
+    // SCORING FOR EVASION (FLEE): Maximize distance from player AND open space.
+    const fleeFactor = 0.1;   // Weight for distance from player (fleeing)
+    const spaceFactor = 0.03; // Weight for open space (survival)
+    const hitPenalty = 5.0;   // Massive crash penalty (Life-or-death priority)
+    const edgePen = 1.5;      // High penalty for arena edges
 
+    // Check distance clear ahead (Radar info)
     const free = freeDistance(ai.pos, c.dir, 22, 'ai'); 
     const edgePenalty = edgeMarginPenalty(future, c.dir);
     const willHit = willHitSoon(ai.pos, c.dir, 16.0, 'ai') ? 1 : 0; 
 
+    // Score: distance from player (flee) + open space - penalties
     const score = (distToPlayer * fleeFactor) + (free * spaceFactor) - (edgePenalty * edgePen) - (willHit * hitPenalty);
 
     if(score > bestScore){
@@ -562,31 +561,31 @@ function aiThink(dt){
     }
   }
 
+  // If turning improves score and we're allowed to turn, do it
   if(best && best.turn !== 0 && ai.turnCD<=0){
     doTurn(ai, best.turn);
     return;
   }
 
+  // Final emergency check for wall hugging
   if(willHitSoon(ai.pos, ai.dir, 16.0, 'ai') && ai.turnCD<=0){
     const leftFree = freeDistance(ai.pos, rot90(ai.dir,-1), 18, 'ai');
     const rightFree= freeDistance(ai.pos, rot90(ai.dir, 1), 18, 'ai');
-    // Only turn if there's enough space to justify the turn cost
-    if(leftFree > 1.0 || rightFree > 1.0){ 
-      doTurn(ai, (rightFree>leftFree)? 1 : -1);
-      return;
-    }
+    doTurn(ai, (rightFree>leftFree)? 1 : -1);
+    return;
   }
 }
 
 function edgeMarginPenalty(pos, dir){
-  const m = 6.0;
+  const m = 6.0; // margin considered "danger zone"
   let pen = 0;
   if(dir.x>0) pen += Math.max(0, m - (ARENA.half - pos.x));
   if(dir.x<0) pen += Math.max(0, m - (pos.x + ARENA.half));
   if(dir.z>0) pen += Math.max(0, m - (ARENA.half - pos.z));
   if(dir.z<0) pen += Math.max(0, m - (pos.z + ARENA.half));
-  return pen * 0.1;
+  return pen * 0.1; // scaled down
 }
+
 function rot90(v,dir){
   const ang = (dir<0? -Math.PI/2 : Math.PI/2);
   const nx = Math.round(Math.cos(ang)*v.x - Math.sin(ang)*v.z);
@@ -651,9 +650,9 @@ function setBanner(text, kind='info', durationMs=1000){
 function resize(){ renderer.setSize(innerWidth,innerHeight); camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix(); }
 addEventListener('resize',resize); resize();
 
-/* ===== Radar (persistent trails) - MODIFIED DEFAULTS ===== */
-const RADAR = { sizeIndex: 1, sizes: [140, 160, 200], maxSeg: 5000 };
-// Removed button event listener
+/* ===== Radar (persistent trails) ===== */
+const RADAR = { sizeIndex: 0, sizes: [140, 160, 200], maxSeg: 5000 };
+// REMOVED RADAR BUTTON LOGIC
 function drawRadar(){
   const s = radarCanvas.width, ctx = radarCtx;
   ctx.clearRect(0,0,s,s);
@@ -702,9 +701,12 @@ function drawRadar(){
 /* ===== Round control ===== */
 function startRound(resetScores=false){
   clearWalls();
-  player.pos.set(-20, ARENA.y, 0); player.dir.set(1,0,0); player.speed=26;
-  ai.pos.set(20, ARENA.y, 0); ai.dir.set(-1,0,0); ai.speed=31;
+  // MOD: Fixed start positions for Chase/Evasion mode (Player always starts x=-20, dir=+1)
+  player.pos.set(-20, ARENA.y, 0); player.dir.set(1,0,0);
+  ai.pos.set(20, ARENA.y, 0); ai.dir.set(-1,0,0);
   player.alive=ai.alive=true;
+  // AI speed remains 31.0 (faster than player's 26)
+  player.speed=26; ai.speed=31; 
   player.boost=ai.boost=1;
   player.turnCD=ai.turnCD=0;
   player.distSinceTurn=ai.distSinceTurn=0;
@@ -712,22 +714,17 @@ function startRound(resetScores=false){
   player.walls.length=ai.walls.length=0;
   player._lastDrop = player.pos.clone(); ai._lastDrop = ai.pos.clone();
   player.movedSinceSpawn = 0; ai.movedSinceSpawn = 0;
-  player._repeatTimer=ai._repeatTimer=0;
-  player.lastTurnDir = 0; player.lastTurnTime = 0;
+  // MOD: Reset player turn state (mirroring is removed, but state kept clean)
+  player.lastTurnDir = 0;
+  player.lastTurnTime = 0;
   
-  updateShipVisual(player); updateShipVisual(ai);
-
+  updateShipVisual(ai);
   if(resetScores){ youWins=aiWins=0; youWinsEl.textContent=0; aiWinsEl.textContent=0; round=1; roundEl.textContent=1; }
-  
-  // Only set to playing/show banner if not waiting for start signal
-  if(roundState!=='waiting_start'){
-    setBanner(`Round ${round}: GO!`, 'info', 900);
-    roundState='playing';
-  }
-  resetTimer=0;
+  setBanner(`Round ${round}: GO!`, 'info', 900);
+  roundState='playing'; resetTimer=0;
 }
 
-/* ===== Main loop (THIRD-PERSON CAMERA) ===== */
+/* ===== Main loop (shoulder-cam preserved) ===== */
 let last=performance.now();
 requestAnimationFrame(function tick(now){
   const dt=Math.min(0.033,(now-last)/1000); last=now;
@@ -735,16 +732,17 @@ requestAnimationFrame(function tick(now){
   if(started && !paused){
     const boosting = keys.has('ShiftLeft') || keys.has('ShiftRight') || mobileBoostHeld;
     
-    if(roundState==='waiting_start'){
-      if(boosting){
-        startRound(false);
-        roundState = 'playing';
-      }
-      player.boost = 1.0;
-    } else if(roundState==='playing'){
-      
-      // Handle sustained boost
-      player.boost = boosting ? 1.8 : 1.0;
+    if(boosting){
+        // MOD: Start the round if waiting for start
+        if(roundState==='waiting_start'){
+            startRound(true);
+        }
+        player.boost=1.8; // MOD: Sustained 1.8x boost
+    } else if(player.boost > 1.0){
+        player.boost=1.0;
+    }
+
+    if(roundState==='playing'){
 
       player._repeatTimer = Math.max(0,(player._repeatTimer||0)-dt);
       ai._repeatTimer = Math.max(0,(ai._repeatTimer||0)-dt);
@@ -762,7 +760,7 @@ requestAnimationFrame(function tick(now){
       let endRound=false;
       const nowMs = performance.now();
 
-      // Collision checks (unmodified)
+      // Player collision (skip self-wall until moved a bit from spawn)
       const playerSelfEligible = (player.movedSinceSpawn >= SELF_MIN_MOVE_BEFORE_SELF_HITS);
       const playerHit = sweptHitsAnyWall(prevP, nextP, 'player', nowMs) &&
                         (playerSelfEligible || !hitIsOnlySelf(prevP, nextP,'player'));
@@ -773,6 +771,7 @@ requestAnimationFrame(function tick(now){
         player.movedSinceSpawn += pv.length();
       }
 
+      // AI collision
       const aiSelfEligible = (ai.movedSinceSpawn >= SELF_MIN_MOVE_BEFORE_SELF_HITS);
       const aiHit = sweptHitsAnyWall(prevA, nextA, 'ai', nowMs) &&
                     (aiSelfEligible || !hitIsOnlySelf(prevA, nextA,'ai'));
@@ -789,23 +788,37 @@ requestAnimationFrame(function tick(now){
       dropTrailVisual(player, prevP, player.pos, matP);
       dropTrailVisual(ai, prevA, ai.pos, matA);
 
-      // Third-Person Chase Camera Logic (NEW)
-      const camTarget = player.pos.clone().add(new THREE.Vector3(0, 0.6, 0));
-      const backOffset = player.dir.clone().multiplyScalar(-8);
-      const upOffset = new THREE.Vector3(0, 6, 0);
-      camera.position.copy(camTarget.clone().add(backOffset).add(upOffset));
-      camera.lookAt(camTarget);
+      // Shoulder camera when close & roughly parallel
+      const baseCamHeight = 1.0, lookAhead = 60;
+      const side = new THREE.Vector3(-player.dir.z,0,player.dir.x);
+      const sep = ai.pos.clone().sub(player.pos);
+      const parallel = player.dir.clone().dot(ai.dir.clone());
+      const lateral = Math.abs(sep.dot(side));
+      const along   = Math.abs(sep.dot(player.dir));
+      let shoulder = 0;
+      if(parallel > 0.2 && lateral < 10.0 && along < 16.0){
+        const sign = Math.sign(sep.dot(side));
+        shoulder = 1.2 * sign;
+      }
+      const camPos = player.pos.clone()
+        .add(new THREE.Vector3(0, baseCamHeight, 0))
+        .add(side.clone().multiplyScalar(shoulder));
+      const lookTarget = player.pos.clone()
+        .add(player.dir.clone().multiplyScalar(lookAhead))
+        .add(new THREE.Vector3(0, -3.0, 0))
+        .add(side.clone().multiplyScalar(shoulder*0.9));
+      camera.position.copy(camPos);
+      camera.lookAt(lookTarget);
 
-      updateShipVisual(player); // Player ship must be updated now
       updateShipVisual(ai);
       setHumFreq();
 
       if(endRound){
         roundState='over';
-        if(player.alive && !ai.alive){ youWins++; youWinsEl.textContent=youWins; setBanner('You trapped the Runner!', 'win', 1500); }
-        else if(!player.alive && ai.alive){ aiWins++; aiWinsEl.textContent=aiWins; setBanner('The Runner got away!', 'lose', 1500); }
-        else { setBanner('Both crashed!', 'info', 1500); }
-        resetTimer = 2.0; 
+        if(player.alive && !ai.alive){ youWins++; youWinsEl.textContent=youWins; setBanner('You won the round!', 'win', 1000); }
+        else if(!player.alive && ai.alive){ aiWins++; aiWinsEl.textContent=aiWins; setBanner('AI won the round', 'lose', 1000); }
+        else { setBanner('Both crashed!', 'info', 900); }
+        resetTimer = 2.0; // Longer reset timer for longer rounds
       }
 
       spdEl.textContent=(player.boost).toFixed(1)+'x';
@@ -816,14 +829,13 @@ requestAnimationFrame(function tick(now){
           if(youWins>=3) setBanner('YOU WIN THE MATCH', 'win', 1600);
           else setBanner('AI WINS THE MATCH', 'lose', 1600);
           youWins=aiWins=0; youWinsEl.textContent=0; aiWinsEl.textContent=0; round=1; roundEl.textContent=1;
-          roundState = 'waiting_start';
+          roundState = 'waiting_start'; // Go back to waiting for start
           setBanner('Press BOOST or Shift to start New Match', 'info', 0);
         }else{
           round++; roundEl.textContent=round;
-          roundState = 'waiting_start';
+          roundState = 'waiting_start'; // Go back to waiting for start
           setBanner(`Press BOOST or Shift to start Round ${round}`, 'info', 0);
         }
-        startRound(false);
       }
     }
   }
@@ -845,6 +857,23 @@ function dropTrailVisual(ent, prev, curr, mat){
   }
 }
 
+/* Helper: detect if the only segment intersected would be caller's current self segment */
+function hitIsOnlySelf(prev, curr, owner){
+  const list = [...player.walls, ...ai.walls];
+  let hitAny=false, hitOther=false;
+  for(const s of list){
+    const own = (s.owner===owner);
+    const len = segLen2D(s.a,s.b); if(len<0.02) continue;
+    if(own && isSameSegment(prev,curr,s.a,s.b,0.02)) continue; // current movement segment
+    const dist = segSegMinDist2D(prev, curr, s.a, s.b);
+    if(dist <= (wallHalf + HEAD_RADIUS)){
+      hitAny=true;
+      if(!own) hitOther=true;
+    }
+  }
+  return hitAny && !hitOther;
+}
+
 /* Prevent repeat spam on keys */
 window.addEventListener('keydown',(e)=>{
   if(!started||paused||roundState!=='playing') return;
@@ -852,6 +881,9 @@ window.addEventListener('keydown',(e)=>{
   if(e.code==='ArrowLeft' || e.code==='KeyA') doTurn(player,-1);
   if(e.code==='ArrowRight'|| e.code==='KeyD') doTurn(player, 1);
 });
+
+/* ===== Utility ===== */
+function cssNumber(px){ return parseFloat(px)||0; }
 </script>
 </body>
 </html>

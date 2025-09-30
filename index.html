@@ -40,10 +40,8 @@
 
   #mobileControls{position:absolute;inset:0;pointer-events:none;z-index:70}
   
-  /* Container for the Left Turn button */
   #turnBtns{position:absolute;left:10px;bottom:10px;display:flex;gap:10px;pointer-events:auto}
   
-  /* Container for the Right Turn and Boost button on the right side */
   #rightMobileBtns{
     position:absolute;
     right:10px;
@@ -54,13 +52,11 @@
     pointer-events:auto;
   }
 
-  /* Turn buttons (72x72px) */
   .round{width:72px;height:72px;border-radius:999px;border:0;background:rgba(255,255,255,.12);color:var(--fg);
          font-weight:900;letter-spacing:.6px;box-shadow:0 6px 14px rgba(0,0,0,.35)}
   #btnLeft::before{content:"⟲";font-size:30px}
   #btnRight::before{content:"⟳";font-size:30px}
   
-  /* Boost button is 64x64px */
   #btnBoost{
     width:64px;
     height:64px;
@@ -77,17 +73,15 @@
   }
   #banner.win{color:var(--win)} #banner.lose{color:var(--lose)} #banner.info{color:#bde0ff}
 
-  /* MODIFIED: Radar position is moved to bottom: 10px */
   #radarWrap{
     position:absolute;
     left:50%;
-    bottom:10px; /* LOWERED POSITION */
+    bottom:10px;
     transform:translateX(-50%);
     z-index:80;
   }
   #radarCanvas{width:140px;height:140px;border-radius:10px;background:rgba(0,0,0,.5);
                border:1px solid rgba(255,255,255,.2);backdrop-filter:blur(3px)}
-  /* Removed styles for #radarToolbar and #btnRadar */
 
   #err{position:fixed;left:8px;bottom:8px;max-width:92%;background:#200;padding:8px 10px;color:#fbb;border:1px solid #a33;border-radius:8px;
        font:12px/1.3 monospace;display:none;z-index:10000;white-space:pre-wrap}
@@ -132,7 +126,7 @@
         <button id="btnStart" class="btn" autofocus>Start</button>
         <button id="btnHow" class="btn">How to Play</button>
       </div>
-      <p style="opacity:.8;font-size:12px;margin-top:8px">Desktop: ←/→ or A/D • **Shift=Boost (1.8x)**. Mobile: ⟲/⟳ and **BOOST (1.8x)**.</p>
+      <p style="opacity:.8;font-size:12px;margin-top:8px">Controls: ←/→ or A/D. **Press SHIFT or BOOST button (1.8x) to start the round.**</p>
     </div>
   </div>
 
@@ -189,7 +183,6 @@ const btnBoost=document.getElementById('btnBoost');
 const banner=document.getElementById('banner');
 const radarCanvas=document.getElementById('radarCanvas');
 const radarCtx=radarCanvas.getContext('2d');
-// REMOVED: const btnRadar=document.getElementById('btnRadar');
 
 /* ===== Three.js setup ===== */
 const renderer=new THREE.WebGLRenderer({canvas,antialias:true,powerPreference:'high-performance'});
@@ -225,7 +218,10 @@ const border=new THREE.Line(borderGeo, borderMat); world.add(border);
 function buildShip(colorHex){
   const g=new THREE.Group();
   const bodyMat=new THREE.MeshStandardMaterial({color:colorHex, metalness:0.2, roughness:0.4});
-  const blackMat=new THREE.MeshStandardMaterial({color:0x101010, roughness:0.9});
+  
+  const NEON_GREEN = 0x39ff14;
+  const cockpitMat=new THREE.MeshBasicMaterial({color:NEON_GREEN, transparent:true, opacity:0.8, blending:THREE.AdditiveBlending});
+
   const neonMat=new THREE.MeshBasicMaterial({color:colorHex, transparent:true, opacity:0.95, blending:THREE.AdditiveBlending});
 
   // Main Body (Sleek Capsule)
@@ -236,7 +232,7 @@ function buildShip(colorHex){
 
   // Cockpit/Canopy (Transparent/darker front section)
   const canopyGeo = new THREE.SphereGeometry(0.32, 16, 12, 0, Math.PI);
-  const canopy = new THREE.Mesh(canopyGeo, blackMat);
+  const canopy = new THREE.Mesh(canopyGeo, cockpitMat);
   canopy.position.set(0, 0.85, 0.6);
   canopy.rotation.x = Math.PI/2;
 
@@ -274,7 +270,6 @@ const player = {
   walls: [], color: 0x00f0ff,
   distSinceTurn: 0, lastTurnSide: 0,
   movedSinceSpawn: 0,
-  // MOD: AI Racing logic state
   lastTurnDir: 0,
   lastTurnTime: 0
 };
@@ -282,7 +277,6 @@ const ai = {
   ship: buildShip(0xff3ad2),
   pos: new THREE.Vector3(20, ARENA.y, 0),
   dir: new THREE.Vector3(-1,0,0),
-  // MOD: AI base speed set to 31.0
   turnCD: 0, speed: 31, boost: 1, alive: true, 
   walls: [], color: 0xff3ad2,
   distSinceTurn: 0, lastTurnSide: 0,
@@ -334,7 +328,7 @@ let youWins=0, aiWins=0, round=1;
 youWinsEl.textContent=youWins; aiWinsEl.textContent=aiWins; roundEl.textContent=round; spdEl.textContent='1.0x';
 let roundState = 'idle';
 let resetTimer = 0;
-let mobileBoostHeld = false; // MOD: New flag for mobile boost button
+let mobileBoostHeld = false;
 
 /* ===== Splash / Start (stable) ===== */
 function reallyRemove(el){ try{ el.style.display='none'; el.remove(); }catch{} }
@@ -344,9 +338,8 @@ function beginGameOnce(){
   startOverlay.style.display='none';
   reallyRemove(startOverlay);
   audioStart();
-  // MOD: Set initial state to wait for boost to start round
-  roundState = 'waiting_start';
-  setBanner('Press BOOST or Shift to start Round 1', 'info', 0);
+  // MODIFIED: Change state to 'pre_round' and remove banner call
+  roundState = 'pre_round';
 }
 btnStart.addEventListener('click', e=>{ e.preventDefault(); e.stopPropagation(); beginGameOnce(); });
 btnHow.addEventListener('click', ()=>{ alert("The AI is the Runner (evades you). You are the Hunter (trap the AI).\nLeft/Right (or A/D) turn 90°. Shift/BOOST for speed (1.8x).\nFirst to 3 wins takes the match."); });
@@ -360,11 +353,11 @@ btnRestart.onclick=()=>{ youWins=aiWins=0; round=1; youWinsEl.textContent=0; aiW
 btnFull.onclick=()=>{ document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen?.(); };
 
 /* ===== Trails & collisions ===== */
-const wallHeight = 2.0, wallHalf = 0.60; // thicker
+const wallHeight = 2.0, wallHalf = 0.60;
 const HEAD_RADIUS = 0.30;
-const SELF_MIN_MOVE_BEFORE_SELF_HITS = 1.0; // units from spawn
-const WALL_GLOBAL_IMMUNE_MS  = 0;        // others: none
-const WALL_SELF_IMMUNE_MS    = 400;      // MOD: Increased self-immunity (0.4s) to fix phantom crash
+const SELF_MIN_MOVE_BEFORE_SELF_HITS = 1.0;
+const WALL_GLOBAL_IMMUNE_MS  = 0;
+const WALL_SELF_IMMUNE_MS    = 400;
 
 function neonMaterial(hex){ return new THREE.MeshBasicMaterial({ color:hex, transparent:true, opacity:1, blending:THREE.AdditiveBlending }); }
 const matP = neonMaterial(cssHex('--p1'));
@@ -403,16 +396,16 @@ addEventListener('keyup',e=>{ keys.delete(e.code); });
 btnLeft.addEventListener('click', ()=>{ if(started && roundState==='playing') doTurn(player,-1); });
 btnRight.addEventListener('click', ()=>{ if(started && roundState==='playing') doTurn(player, 1); });
 
-// MOD: Mobile Boost button to use the flag for sustained boost
 btnBoost.addEventListener('touchstart', ()=>{ if(started) mobileBoostHeld=true; }, {passive:true});
 btnBoost.addEventListener('touchend', ()=>{ mobileBoostHeld=false; }, {passive:true});
 btnBoost.addEventListener('click', ()=>{ 
-    if(roundState==='waiting_start') startRound(true); 
+    // MODIFIED: Check for 'pre_round' state to start the match
+    if(roundState==='pre_round') startRound(false); 
 });
 
 /* Turn & boost (with minimal anti-spin) */
-const MIN_TRAVEL_BETWEEN_TURNS = 3.0; // MOD: Reduced from 4.4 for tighter turning/responsiveness
-const NO_REPEAT_SIDE_TIME = 0.45;    // MOD: Reduced from 0.85 to decrease turn 'lag'
+const MIN_TRAVEL_BETWEEN_TURNS = 3.0;
+const NO_REPEAT_SIDE_TIME = 0.45;
 function doTurn(ship, dir, force=false){
   if(!ship.alive || (roundState!=='playing' && !force)) return;
   if(ship.distSinceTurn < MIN_TRAVEL_BETWEEN_TURNS && !force) return;
@@ -436,7 +429,6 @@ function doTurn(ship, dir, force=false){
   ship.dir.copy(newDir);
   ship.distSinceTurn = 0;
   
-  // MOD: Record turn time and direction (kept for potential future uses, but mirroring is removed)
   if(ship === player) {
       player.lastTurnDir = dir;
       player.lastTurnTime = performance.now();
@@ -472,7 +464,6 @@ function segSegMinDist2D(a1,a2,b1,b2){
   return Math.hypot(dx,dz);
 }
 
-/* Build list of segments; include provisional segments if non-zero length */
 function allLogicalSegments(){
   const list = [...player.walls, ...ai.walls];
   function pushProvisional(ent, owner){
@@ -488,7 +479,6 @@ function allLogicalSegments(){
   return list;
 }
 
-/* Helpers for segment comparison */
 function segLen2D(a,b){ const dx=a.x-b.x, dz=a.z-b.z; return Math.hypot(dx,dz); }
 function isSameSegment(a1,a2,b1,b2,eps=0.01){
   const d1 = a1.distanceTo(b1) + a2.distanceTo(b2);
@@ -496,7 +486,6 @@ function isSameSegment(a1,a2,b1,b2,eps=0.01){
   return (d1<eps) || (d2<eps);
 }
 
-/* Swept collision: no global immunity, small self-immunity, expanded radius */
 function sweptHitsAnyWall(prev, curr, owner, nowMs){
   const list = allLogicalSegments();
   for(const s of list){
@@ -505,8 +494,7 @@ function sweptHitsAnyWall(prev, curr, owner, nowMs){
     if(len < 0.02) continue;
 
     const age = (nowMs - (s.createdAt||nowMs));
-    if(!own && age < WALL_GLOBAL_IMMUNE_MS) continue; // 0
-    // MOD: Use new 400ms self-immunity here
+    if(!own && age < WALL_GLOBAL_IMMUNE_MS) continue;
     if(own && age < WALL_SELF_IMMUNE_MS) continue; 
 
     if(own && isSameSegment(prev,curr,s.a,s.b,0.02)) continue;
@@ -527,9 +515,6 @@ function aiThink(dt){
 
   ai.boost = 1.0; 
 
-  // --- EVASION RUNNER LOGIC (FLEE AND SURVIVE) ---
-  
-  // Candidate directions: keep, left, right
   const cand = [
     { name:'keep', dir: ai.dir.clone(), turn: 0 },
     { name:'left', dir: rot90(ai.dir,-1), turn: -1 },
@@ -538,22 +523,19 @@ function aiThink(dt){
 
   let best = null, bestScore = -Infinity;
   for(const c of cand){
-    const stepLen = 4.0; // virtual step to predict position
+    const stepLen = 4.0;
     const future = ai.pos.clone().add(c.dir.clone().multiplyScalar(stepLen));
     const distToPlayer = future.distanceTo(player.pos);
     
-    // SCORING FOR EVASION (FLEE): Maximize distance from player AND open space.
-    const fleeFactor = 0.1;   // Weight for distance from player (fleeing)
-    const spaceFactor = 0.03; // Weight for open space (survival)
-    const hitPenalty = 5.0;   // Massive crash penalty (Life-or-death priority)
-    const edgePen = 1.5;      // High penalty for arena edges
+    const fleeFactor = 0.1;
+    const spaceFactor = 0.03;
+    const hitPenalty = 5.0;
+    const edgePen = 1.5;
 
-    // Check distance clear ahead (Radar info)
     const free = freeDistance(ai.pos, c.dir, 22, 'ai'); 
     const edgePenalty = edgeMarginPenalty(future, c.dir);
     const willHit = willHitSoon(ai.pos, c.dir, 16.0, 'ai') ? 1 : 0; 
 
-    // Score: distance from player (flee) + open space - penalties
     const score = (distToPlayer * fleeFactor) + (free * spaceFactor) - (edgePenalty * edgePen) - (willHit * hitPenalty);
 
     if(score > bestScore){
@@ -561,13 +543,11 @@ function aiThink(dt){
     }
   }
 
-  // If turning improves score and we're allowed to turn, do it
   if(best && best.turn !== 0 && ai.turnCD<=0){
     doTurn(ai, best.turn);
     return;
   }
 
-  // Final emergency check for wall hugging
   if(willHitSoon(ai.pos, ai.dir, 16.0, 'ai') && ai.turnCD<=0){
     const leftFree = freeDistance(ai.pos, rot90(ai.dir,-1), 18, 'ai');
     const rightFree= freeDistance(ai.pos, rot90(ai.dir, 1), 18, 'ai');
@@ -577,13 +557,13 @@ function aiThink(dt){
 }
 
 function edgeMarginPenalty(pos, dir){
-  const m = 6.0; // margin considered "danger zone"
+  const m = 6.0;
   let pen = 0;
   if(dir.x>0) pen += Math.max(0, m - (ARENA.half - pos.x));
   if(dir.x<0) pen += Math.max(0, m - (pos.x + ARENA.half));
   if(dir.z>0) pen += Math.max(0, m - (ARENA.half - pos.z));
   if(dir.z<0) pen += Math.max(0, m - (pos.z + ARENA.half));
-  return pen * 0.1; // scaled down
+  return pen * 0.1;
 }
 
 function rot90(v,dir){
@@ -652,7 +632,6 @@ addEventListener('resize',resize); resize();
 
 /* ===== Radar (persistent trails) ===== */
 const RADAR = { sizeIndex: 0, sizes: [140, 160, 200], maxSeg: 5000 };
-// REMOVED RADAR BUTTON LOGIC
 function drawRadar(){
   const s = radarCanvas.width, ctx = radarCtx;
   ctx.clearRect(0,0,s,s);
@@ -701,26 +680,23 @@ function drawRadar(){
 /* ===== Round control ===== */
 function startRound(resetScores=false){
   clearWalls();
-  // MOD: Fixed start positions for Chase/Evasion mode (Player always starts x=-20, dir=+1)
   player.pos.set(-20, ARENA.y, 0); player.dir.set(1,0,0);
   ai.pos.set(20, ARENA.y, 0); ai.dir.set(-1,0,0);
   player.alive=ai.alive=true;
-  // AI speed remains 31.0 (faster than player's 26)
   player.speed=26; ai.speed=31; 
-  player.boost=ai.boost=1;
+  player.boost=1.8; ai.boost=1; // Start with boost on for the first frame
   player.turnCD=ai.turnCD=0;
   player.distSinceTurn=ai.distSinceTurn=0;
   player.lastTurnSide=ai.lastTurnSide=0;
   player.walls.length=ai.walls.length=0;
   player._lastDrop = player.pos.clone(); ai._lastDrop = ai.pos.clone();
   player.movedSinceSpawn = 0; ai.movedSinceSpawn = 0;
-  // MOD: Reset player turn state (mirroring is removed, but state kept clean)
   player.lastTurnDir = 0;
   player.lastTurnTime = 0;
   
   updateShipVisual(ai);
   if(resetScores){ youWins=aiWins=0; youWinsEl.textContent=0; aiWinsEl.textContent=0; round=1; roundEl.textContent=1; }
-  setBanner(`Round ${round}: GO!`, 'info', 900);
+  // MODIFIED: Removed setBanner call
   roundState='playing'; resetTimer=0;
 }
 
@@ -733,11 +709,13 @@ requestAnimationFrame(function tick(now){
     const boosting = keys.has('ShiftLeft') || keys.has('ShiftRight') || mobileBoostHeld;
     
     if(boosting){
-        // MOD: Start the round if waiting for start
-        if(roundState==='waiting_start'){
-            startRound(true);
+        // MODIFIED: Check for 'pre_round' state to start the match
+        if(roundState==='pre_round'){
+            startRound(youWins==0 && aiWins==0); // Start the round (reset scores only if no points yet)
+            player.boost=1.8; // Maintain boost since the button is held
+        } else {
+            player.boost=1.8; // Maintain boost during playing
         }
-        player.boost=1.8; // MOD: Sustained 1.8x boost
     } else if(player.boost > 1.0){
         player.boost=1.0;
     }
@@ -760,7 +738,6 @@ requestAnimationFrame(function tick(now){
       let endRound=false;
       const nowMs = performance.now();
 
-      // Player collision (skip self-wall until moved a bit from spawn)
       const playerSelfEligible = (player.movedSinceSpawn >= SELF_MIN_MOVE_BEFORE_SELF_HITS);
       const playerHit = sweptHitsAnyWall(prevP, nextP, 'player', nowMs) &&
                         (playerSelfEligible || !hitIsOnlySelf(prevP, nextP,'player'));
@@ -771,7 +748,6 @@ requestAnimationFrame(function tick(now){
         player.movedSinceSpawn += pv.length();
       }
 
-      // AI collision
       const aiSelfEligible = (ai.movedSinceSpawn >= SELF_MIN_MOVE_BEFORE_SELF_HITS);
       const aiHit = sweptHitsAnyWall(prevA, nextA, 'ai', nowMs) &&
                     (aiSelfEligible || !hitIsOnlySelf(prevA, nextA,'ai'));
@@ -818,7 +794,7 @@ requestAnimationFrame(function tick(now){
         if(player.alive && !ai.alive){ youWins++; youWinsEl.textContent=youWins; setBanner('You won the round!', 'win', 1000); }
         else if(!player.alive && ai.alive){ aiWins++; aiWinsEl.textContent=aiWins; setBanner('AI won the round', 'lose', 1000); }
         else { setBanner('Both crashed!', 'info', 900); }
-        resetTimer = 2.0; // Longer reset timer for longer rounds
+        resetTimer = 2.0;
       }
 
       spdEl.textContent=(player.boost).toFixed(1)+'x';
@@ -829,13 +805,14 @@ requestAnimationFrame(function tick(now){
           if(youWins>=3) setBanner('YOU WIN THE MATCH', 'win', 1600);
           else setBanner('AI WINS THE MATCH', 'lose', 1600);
           youWins=aiWins=0; youWinsEl.textContent=0; aiWinsEl.textContent=0; round=1; roundEl.textContent=1;
-          roundState = 'waiting_start'; // Go back to waiting for start
-          setBanner('Press BOOST or Shift to start New Match', 'info', 0);
+          // MODIFIED: Change state to 'pre_round' and removed banner call
+          roundState = 'pre_round';
         }else{
           round++; roundEl.textContent=round;
-          roundState = 'waiting_start'; // Go back to waiting for start
-          setBanner(`Press BOOST or Shift to start Round ${round}`, 'info', 0);
+          // MODIFIED: Change state to 'pre_round' and removed banner call
+          roundState = 'pre_round';
         }
+        // No auto-start: the user must press BOOST/SHIFT in the next tick
       }
     }
   }
@@ -864,7 +841,7 @@ function hitIsOnlySelf(prev, curr, owner){
   for(const s of list){
     const own = (s.owner===owner);
     const len = segLen2D(s.a,s.b); if(len<0.02) continue;
-    if(own && isSameSegment(prev,curr,s.a,s.b,0.02)) continue; // current movement segment
+    if(own && isSameSegment(prev,curr,s.a,s.b,0.02)) continue;
     const dist = segSegMinDist2D(prev, curr, s.a, s.b);
     if(dist <= (wallHalf + HEAD_RADIUS)){
       hitAny=true;

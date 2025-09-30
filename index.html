@@ -39,13 +39,35 @@
   .row{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
 
   #mobileControls{position:absolute;inset:0;pointer-events:none;z-index:70}
+  
+  /* Container for the Left Turn button */
   #turnBtns{position:absolute;left:10px;bottom:10px;display:flex;gap:10px;pointer-events:auto}
+  
+  /* NEW: Container for the Right Turn and Boost button on the right side */
+  #rightMobileBtns{
+    position:absolute;
+    right:10px;
+    bottom:10px;
+    display:flex;
+    flex-direction:column; /* CHANGED: Boost is now above Right Turn */
+    gap:10px;
+    pointer-events:auto;
+  }
+
+  /* Turn buttons (72x72px) */
   .round{width:72px;height:72px;border-radius:999px;border:0;background:rgba(255,255,255,.12);color:var(--fg);
          font-weight:900;letter-spacing:.6px;box-shadow:0 6px 14px rgba(0,0,0,.35)}
   #btnLeft::before{content:"⟲";font-size:30px}
   #btnRight::before{content:"⟳";font-size:30px}
-  #btnBoost{position:absolute;right:10px;bottom:10px;width:88px;height:88px;border-radius:999px;border:0;
-            background:linear-gradient(180deg,#ffd35a,#ff9e3d);color:#081017;font-weight:900;letter-spacing:.6px;pointer-events:auto}
+  
+  /* MODIFIED: Boost button is now 64x64px and positioned by #rightMobileBtns */
+  #btnBoost{
+    width:64px;
+    height:64px;
+    border-radius:999px;border:0;
+    background:linear-gradient(180deg,#ffd35a,#ff9e3d);
+    color:#081017;font-weight:900;letter-spacing:.6px;pointer-events:auto
+  }
 
   #banner{
     position:absolute;left:50%;top:14%;transform:translateX(-50%);
@@ -55,7 +77,8 @@
   }
   #banner.win{color:var(--win)} #banner.lose{color:var(--lose)} #banner.info{color:#bde0ff}
 
-  #radarWrap{position:absolute;left:50%;bottom:95px;transform:translateX(-50%);z-index:80;display:flex;flex-direction:column;gap:6px;align-items:center}
+  /* MODIFIED: Radar position is moved closer to the bottom (20px) */
+  #radarWrap{position:absolute;left:50%;bottom:20px;transform:translateX(-50%);z-index:80;display:flex;flex-direction:column;gap:6px;align-items:center}
   #radarCanvas{width:140px;height:140px;border-radius:10px;background:rgba(0,0,0,.5);
                border:1px solid rgba(255,255,255,.2);backdrop-filter:blur(3px)}
   #radarToolbar{display:flex;gap:6px;justify-content:center}
@@ -124,9 +147,11 @@
   <div id="mobileControls">
     <div id="turnBtns">
       <button id="btnLeft" class="round" aria-label="Turn Left"></button>
+    </div>
+    <div id="rightMobileBtns">
+      <button id="btnBoost">BOOST</button>
       <button id="btnRight" class="round" aria-label="Turn Right"></button>
     </div>
-    <button id="btnBoost">BOOST</button>
   </div>
 
   <div id="banner" class="info">Ready</div>
